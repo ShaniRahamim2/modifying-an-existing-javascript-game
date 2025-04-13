@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Platformer Game with Screen Scroll and Score</title>
+    <title>Platformer Game - Falling Platforms</title>
     <style>
         body, html { margin: 0; padding: 0; overflow: hidden; }
         #gameCanvas { background-color: #87CEEB; display: block; margin: auto; }
@@ -18,18 +18,21 @@
         // Game settings
         const gravity = 0.5;
         const friction = 0.8;
-        const baseJump = -10; // Base jump velocity
+        const baseJump = -10;
+        const platformFallDelay = 4; // Seconds before platform falls
+        const platformFallSpeed = 2; // Pixels per frame the platform falls
 
         // Player
         let player = {
             x: canvas.width / 2 - 10,
-            y: canvas.height - 20,   // Start exactly on the ground
+            y: canvas.height - 20,
             width: 20,
             height: 20,
             speed: 5,
             velX: 0,
             velY: 0,
-            jumping: false
+            jumping: false,
+            currentPlatform: null // Track the platform the player is currently on
         };
 
         // Platforms
@@ -39,24 +42,35 @@
         for(let i = 0; i < 10; i++) {
             platforms.push({
                 x: Math.random() * (canvas.width - platformWidth),
-                y: canvas.height - 100 - (Math.random() * 80 + 80) * i, // Platforms start higher up
+                y: canvas.height - 100 - (Math.random() * 80 + 80) * i,
                 width: platformWidth,
-                height: platformHeight
+                height: platformHeight,
+                // Platform state for falling mechanic
+                standTimer: 0,    // How long the player has stood on this platform (in seconds)
+                isFalling: false, // Is the platform currently falling?
+                isPlayerOn: false // Is the player currently standing on this specific platform?
             });
         }
 
-        // === Score Variables ===
+        // Score Variables
         let score = 0;
-        // Track the highest Y the player has landed on. Initialized to ground level.
         let highestYReached = canvas.height - player.height;
 
         // Key Listener
         let keys = [];
+        let lastFrameTime = performance.now(); // For delta time calculation
+
         window.addEventListener('keydown', function(e) {
             keys[e.keyCode] = true;
             if (e.keyCode == 32 && !player.jumping) { // Space key for jump
                 player.jumping = true;
                 player.velY = baseJump - Math.abs(player.velX * 0.1);
+                // If jumping off a platform, reset its state immediately
+                if (player.currentPlatform) {
+                    player.currentPlatform.isPlayerOn = false;
+                    player.currentPlatform.standTimer = 0;
+                    player.currentPlatform = null;
+                }
             }
         });
         window.addEventListener('keyup', function(e) {
@@ -64,6 +78,10 @@
         });
 
         function updateGame() {
+            let now = performance.now();
+            let deltaTime = (now - lastFrameTime) / 1000; // Time since last frame in seconds
+            lastFrameTime = now;
+
             // Handle horizontal movement input
             if (keys[39]) { // right arrow
                 if (player.velX < player.speed) {
@@ -74,7 +92,7 @@
                     player.velX--;
                 }
             } else {
-                 player.velX *= friction; // Apply friction when not moving
+                 player.velX *= friction;
             }
 
             // Apply gravity
@@ -84,22 +102,51 @@
             player.x += player.velX;
             player.y += player.velY;
 
+            // --- Platform State Update (Falling and Timers) ---
+            platforms.forEach(platform => {
+                // If platform is falling, update its position
+                if (platform.isFalling) {
+                    platform.y += platformFallSpeed;
+                }
+                // If player is currently marked as being on this platform
+                else if (platform.isPlayerOn) {
+                    platform.standTimer += deltaTime; // Increment timer by seconds passed
+                    if (platform.standTimer >= platformFallDelay) {
+                        platform.isFalling = true; // Start falling
+                        platform.isPlayerOn = false; // Player is no longer technically "on" it
+                        // If this is the platform the player thinks they are on, detach them
+                        if (player.currentPlatform === platform) {
+                            player.currentPlatform = null;
+                        }
+                    }
+                } else {
+                     // Reset timer if player is not on it (might have walked off)
+                     platform.standTimer = 0;
+                }
+            });
+
+
             // Screen scroll
             let scrollOffset = 0;
             if (player.y < canvas.height / 4) {
                  scrollOffset = Math.abs(player.velY) > 1 ? Math.abs(player.velY) : (canvas.height / 4 - player.y);
                  if (scrollOffset < 0) scrollOffset = 0;
 
-                player.y += scrollOffset; // Adjust player position relative to scroll
-                highestYReached += scrollOffset; // Adjust the score benchmark relative to the scroll
+                player.y += scrollOffset;
+                highestYReached += scrollOffset;
 
                 // Move platforms down and recycle them
                 platforms.forEach(platform => {
                     platform.y += scrollOffset;
                     if (platform.y > canvas.height) {
-                         let topPlatformY = Math.min(...platforms.map(p => p.y));
-                         platform.y = Math.min(topPlatformY - (Math.random() * 60 + 80), player.y - canvas.height / 2);
-                         platform.x = Math.random() * (canvas.width - platform.width);
+                        // Reset platform state when recycling
+                        platform.isFalling = false;
+                        platform.standTimer = 0;
+                        platform.isPlayerOn = false;
+                        // Reposition recycled platform
+                        let topPlatformY = Math.min(...platforms.map(p => p.y).filter(y => y > -Infinity)); // Find highest valid Y
+                        platform.y = Math.min(topPlatformY - (Math.random() * 60 + 80), player.y - canvas.height / 2);
+                        platform.x = Math.random() * (canvas.width - platform.width);
                     }
                 });
             }
@@ -113,43 +160,74 @@
                 player.velX = 0;
             }
 
+            // Assume player is not on a platform this frame until proven otherwise
+            let onPlatformThisFrame = null;
+
             // Ground collision
             if(player.y >= canvas.height - player.height){
                 player.y = canvas.height - player.height;
                 if (player.velY > 0) {
                     player.jumping = false;
                     player.velY = 0;
+                    onPlatformThisFrame = 'ground'; // Consider ground as a landing spot
                 }
-                // Reset highestYReached if hitting the ground prevents score farming
-                // highestYReached = canvas.height - player.height;
             }
 
             // Platform collision
             platforms.forEach(platform => {
+                // Ignore collision check if the platform is already falling
+                if (platform.isFalling) return;
+
+                // Standard platform collision check
                 if (
-                    player.velY >= 0 && // Check if falling/still
+                    player.velY >= 0 &&
                     player.x < platform.x + platform.width &&
                     player.x + player.width > platform.x &&
                     player.y + player.height >= platform.y &&
                     player.y + player.height <= platform.y + platform.height + player.velY
                 ) {
-                    // --- Scoring Logic ---
                     let landingY = platform.y - player.height;
-                    // Award score only if this landing is higher than the previous highest
                     if (landingY < highestYReached) {
                         let heightGain = Math.round(highestYReached - landingY);
-                        score += heightGain; // Base score for height difference
-                        score += Math.round(heightGain * 0.1); // Bonus for larger jumps
-                        highestYReached = landingY; // Update the benchmark
+                        score += heightGain;
+                        score += Math.round(heightGain * 0.1);
+                        highestYReached = landingY;
                     }
-                    // --- End of Scoring Logic ---
 
-                    // Handle landing
                     player.jumping = false;
                     player.velY = 0;
-                    player.y = platform.y - player.height; // Snap player to platform top
+                    player.y = platform.y - player.height;
+
+                    onPlatformThisFrame = platform; // Mark the platform landed on
                 }
             });
+
+             // --- Update Platform Standing Status ---
+             // Check if the player landed on a *new* platform or the ground
+            if (onPlatformThisFrame && player.currentPlatform !== onPlatformThisFrame) {
+                 // Reset the old platform's state if player was on one
+                 if (player.currentPlatform && player.currentPlatform !== 'ground') {
+                     player.currentPlatform.isPlayerOn = false;
+                     player.currentPlatform.standTimer = 0;
+                 }
+                 // Set the new platform's state (if it's not the ground)
+                 if (onPlatformThisFrame !== 'ground') {
+                     player.currentPlatform = onPlatformThisFrame;
+                     player.currentPlatform.isPlayerOn = true;
+                     player.currentPlatform.standTimer = 0; // Start timer
+                 } else {
+                     player.currentPlatform = null; // Landed on ground
+                 }
+            }
+             // Check if the player *was* on a platform but is no longer landing on anything this frame
+            else if (!onPlatformThisFrame && player.currentPlatform) {
+                if (player.currentPlatform !== 'ground') {
+                    player.currentPlatform.isPlayerOn = false;
+                    player.currentPlatform.standTimer = 0;
+                }
+                player.currentPlatform = null;
+            }
+
 
             // --- Drawing ---
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -159,8 +237,16 @@
             ctx.fillRect(player.x, player.y, player.width, player.height);
 
             // Draw platforms
-            ctx.fillStyle = 'black';
             platforms.forEach(platform => {
+                // Maybe change color slightly if timer is running? (Optional visual cue)
+                if (platform.isPlayerOn && !platform.isFalling) {
+                    ctx.fillStyle = '#555'; // Darker gray if player is on it
+                } else if (platform.isFalling) {
+                    ctx.fillStyle = '#AAA'; // Lighter gray if falling
+                }
+                else {
+                    ctx.fillStyle = 'black'; // Default color
+                }
                 ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
             });
 
@@ -181,10 +267,10 @@
                  ctx.font = '20px Arial';
                  ctx.fillText('Final Score: ' + score, canvas.width / 2, canvas.height / 2 + 20);
                  ctx.fillText('Refresh to play again', canvas.width / 2, canvas.height / 2 + 50);
-                 return; // Stop the game loop
+                 return;
              }
 
-            requestAnimationFrame(updateGame); // Loop the game
+            requestAnimationFrame(updateGame);
         }
 
         updateGame(); // Start the game
