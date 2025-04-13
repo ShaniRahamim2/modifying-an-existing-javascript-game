@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Platformer Game - Falling Platforms</title>
+    <title>Platformer Game - Numbered Falling Platforms</title>
     <style>
         body, html { margin: 0; padding: 0; overflow: hidden; }
         #gameCanvas { background-color: #87CEEB; display: block; margin: auto; }
@@ -18,55 +18,86 @@
         // Game settings
         const gravity = 0.5;
         const friction = 0.8;
-        const baseJump = -10;
-        const platformFallDelay = 4; // Seconds before platform falls
-        const platformFallSpeed = 2; // Pixels per frame the platform falls
+        const baseJump = -12; // << Increased base jump slightly for better reach
+        const platformFallDelay = 4;
+        const platformFallSpeed = 2;
 
         // Player
         let player = {
             x: canvas.width / 2 - 10,
-            y: canvas.height - 20,
+            y: canvas.height - 20, // Start on ground
             width: 20,
             height: 20,
             speed: 5,
             velX: 0,
             velY: 0,
             jumping: false,
-            currentPlatform: null // Track the platform the player is currently on
+            currentPlatform: null
         };
 
-        // Platforms
+        // Platforms & Global Counter
         let platforms = [];
+        let platformCounter = 0;
         const platformWidth = 100;
         const platformHeight = 10;
-        for(let i = 0; i < 10; i++) {
-            platforms.push({
+        const initialPlatformMaxHeight = 90; // Max height needed for the *first* jump from ground
+        const platformMinSpacing = 80;       // Min vertical distance between platforms
+        const platformMaxSpacing = 150;      // Max vertical distance between platforms
+
+        // --- Revised Initial Platform Generation ---
+        // Create the very first platform at a reachable height from the ground
+        platformCounter++;
+        let firstPlatformY = player.y - (Math.random() * (initialPlatformMaxHeight - platformHeight) + platformHeight + 10); // Ensure it's above player, but reachable
+        platforms.push({
+            x: Math.random() * (canvas.width - platformWidth),
+            y: firstPlatformY,
+            width: platformWidth,
+            height: platformHeight,
+            standTimer: 0,
+            isFalling: false,
+            isPlayerOn: false,
+            labelNumber: (platformCounter % 10 === 0) ? platformCounter : null
+        });
+
+        // Create subsequent platforms, spaced progressively higher
+        let lastPlatformY = firstPlatformY;
+        for(let i = 1; i < 10; i++) {
+            platformCounter++;
+            let spacing = Math.random() * (platformMaxSpacing - platformMinSpacing) + platformMinSpacing;
+            let nextY = lastPlatformY - spacing; // Place above the last one
+            let newPlatform = {
                 x: Math.random() * (canvas.width - platformWidth),
-                y: canvas.height - 100 - (Math.random() * 80 + 80) * i,
+                y: nextY,
                 width: platformWidth,
                 height: platformHeight,
-                // Platform state for falling mechanic
-                standTimer: 0,    // How long the player has stood on this platform (in seconds)
-                isFalling: false, // Is the platform currently falling?
-                isPlayerOn: false // Is the player currently standing on this specific platform?
-            });
+                standTimer: 0,
+                isFalling: false,
+                isPlayerOn: false,
+                labelNumber: null
+            };
+            if (platformCounter % 10 === 0) {
+                newPlatform.labelNumber = platformCounter;
+            }
+            platforms.push(newPlatform);
+            lastPlatformY = nextY; // Use this platform's Y for the next spacing calculation
         }
+        // --- End Revised Generation ---
+
 
         // Score Variables
         let score = 0;
         let highestYReached = canvas.height - player.height;
 
-        // Key Listener
+        // Key Listener & Timing
         let keys = [];
-        let lastFrameTime = performance.now(); // For delta time calculation
+        let lastFrameTime = performance.now();
 
         window.addEventListener('keydown', function(e) {
             keys[e.keyCode] = true;
-            if (e.keyCode == 32 && !player.jumping) { // Space key for jump
+            if (e.keyCode == 32 && !player.jumping) { // Space key
                 player.jumping = true;
                 player.velY = baseJump - Math.abs(player.velX * 0.1);
-                // If jumping off a platform, reset its state immediately
-                if (player.currentPlatform) {
+                if (player.currentPlatform && player.currentPlatform !== 'ground') {
                     player.currentPlatform.isPlayerOn = false;
                     player.currentPlatform.standTimer = 0;
                     player.currentPlatform = null;
@@ -79,18 +110,14 @@
 
         function updateGame() {
             let now = performance.now();
-            let deltaTime = (now - lastFrameTime) / 1000; // Time since last frame in seconds
+            let deltaTime = (now - lastFrameTime) / 1000;
             lastFrameTime = now;
 
-            // Handle horizontal movement input
-            if (keys[39]) { // right arrow
-                if (player.velX < player.speed) {
-                    player.velX++;
-                }
-            } else if (keys[37]) { // left arrow
-                if (player.velX > -player.speed) {
-                    player.velX--;
-                }
+            // Horizontal movement
+            if (keys[39]) {
+                if (player.velX < player.speed) player.velX++;
+            } else if (keys[37]) {
+                if (player.velX > -player.speed) player.velX--;
             } else {
                  player.velX *= friction;
             }
@@ -102,31 +129,26 @@
             player.x += player.velX;
             player.y += player.velY;
 
-            // --- Platform State Update (Falling and Timers) ---
+            // Platform State Update (Falling/Timers)
             platforms.forEach(platform => {
-                // If platform is falling, update its position
                 if (platform.isFalling) {
                     platform.y += platformFallSpeed;
                 }
-                // If player is currently marked as being on this platform
                 else if (platform.isPlayerOn) {
-                    platform.standTimer += deltaTime; // Increment timer by seconds passed
+                    platform.standTimer += deltaTime;
                     if (platform.standTimer >= platformFallDelay) {
-                        platform.isFalling = true; // Start falling
-                        platform.isPlayerOn = false; // Player is no longer technically "on" it
-                        // If this is the platform the player thinks they are on, detach them
+                        platform.isFalling = true;
+                        platform.isPlayerOn = false;
                         if (player.currentPlatform === platform) {
                             player.currentPlatform = null;
                         }
                     }
                 } else {
-                     // Reset timer if player is not on it (might have walked off)
                      platform.standTimer = 0;
                 }
             });
 
-
-            // Screen scroll
+            // Screen scroll & Platform Recycling
             let scrollOffset = 0;
             if (player.y < canvas.height / 4) {
                  scrollOffset = Math.abs(player.velY) > 1 ? Math.abs(player.velY) : (canvas.height / 4 - player.y);
@@ -135,17 +157,22 @@
                 player.y += scrollOffset;
                 highestYReached += scrollOffset;
 
-                // Move platforms down and recycle them
                 platforms.forEach(platform => {
                     platform.y += scrollOffset;
                     if (platform.y > canvas.height) {
-                        // Reset platform state when recycling
+                        // Reset platform state
                         platform.isFalling = false;
                         platform.standTimer = 0;
                         platform.isPlayerOn = false;
-                        // Reposition recycled platform
+
+                        // Increment counter and check for label
+                        platformCounter++;
+                        platform.labelNumber = (platformCounter % 10 === 0) ? platformCounter : null;
+
+                        // Reposition recycled platform above the highest one
                         let topPlatformY = Math.min(...platforms.map(p => p.y).filter(y => y > -Infinity)); // Find highest valid Y
-                        platform.y = Math.min(topPlatformY - (Math.random() * 60 + 80), player.y - canvas.height / 2);
+                        let spacing = Math.random() * (platformMaxSpacing - platformMinSpacing) + platformMinSpacing;
+                        platform.y = topPlatformY - spacing; // Position above the current top platform
                         platform.x = Math.random() * (canvas.width - platform.width);
                     }
                 });
@@ -160,7 +187,7 @@
                 player.velX = 0;
             }
 
-            // Assume player is not on a platform this frame until proven otherwise
+            // --- Collision Detection ---
             let onPlatformThisFrame = null;
 
             // Ground collision
@@ -169,16 +196,14 @@
                 if (player.velY > 0) {
                     player.jumping = false;
                     player.velY = 0;
-                    onPlatformThisFrame = 'ground'; // Consider ground as a landing spot
+                    onPlatformThisFrame = 'ground';
                 }
             }
 
             // Platform collision
             platforms.forEach(platform => {
-                // Ignore collision check if the platform is already falling
-                if (platform.isFalling) return;
+                if (platform.isFalling) return; // No collision with falling platforms
 
-                // Standard platform collision check
                 if (
                     player.velY >= 0 &&
                     player.x < platform.x + platform.width &&
@@ -186,6 +211,7 @@
                     player.y + player.height >= platform.y &&
                     player.y + player.height <= platform.y + platform.height + player.velY
                 ) {
+                    // Score calculation
                     let landingY = platform.y - player.height;
                     if (landingY < highestYReached) {
                         let heightGain = Math.round(highestYReached - landingY);
@@ -193,41 +219,33 @@
                         score += Math.round(heightGain * 0.1);
                         highestYReached = landingY;
                     }
-
+                    // Landing physics
                     player.jumping = false;
                     player.velY = 0;
                     player.y = platform.y - player.height;
-
-                    onPlatformThisFrame = platform; // Mark the platform landed on
+                    onPlatformThisFrame = platform;
                 }
             });
 
-             // --- Update Platform Standing Status ---
-             // Check if the player landed on a *new* platform or the ground
+            // --- Update Platform Standing Status ---
             if (onPlatformThisFrame && player.currentPlatform !== onPlatformThisFrame) {
-                 // Reset the old platform's state if player was on one
                  if (player.currentPlatform && player.currentPlatform !== 'ground') {
                      player.currentPlatform.isPlayerOn = false;
                      player.currentPlatform.standTimer = 0;
                  }
-                 // Set the new platform's state (if it's not the ground)
                  if (onPlatformThisFrame !== 'ground') {
                      player.currentPlatform = onPlatformThisFrame;
                      player.currentPlatform.isPlayerOn = true;
-                     player.currentPlatform.standTimer = 0; // Start timer
+                     player.currentPlatform.standTimer = 0;
                  } else {
-                     player.currentPlatform = null; // Landed on ground
+                     player.currentPlatform = null;
                  }
             }
-             // Check if the player *was* on a platform but is no longer landing on anything this frame
-            else if (!onPlatformThisFrame && player.currentPlatform) {
-                if (player.currentPlatform !== 'ground') {
-                    player.currentPlatform.isPlayerOn = false;
-                    player.currentPlatform.standTimer = 0;
-                }
+            else if (!onPlatformThisFrame && player.currentPlatform && player.currentPlatform !== 'ground') {
+                player.currentPlatform.isPlayerOn = false;
+                player.currentPlatform.standTimer = 0;
                 player.currentPlatform = null;
             }
-
 
             // --- Drawing ---
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -238,22 +256,26 @@
 
             // Draw platforms
             platforms.forEach(platform => {
-                // Maybe change color slightly if timer is running? (Optional visual cue)
-                if (platform.isPlayerOn && !platform.isFalling) {
-                    ctx.fillStyle = '#555'; // Darker gray if player is on it
-                } else if (platform.isFalling) {
-                    ctx.fillStyle = '#AAA'; // Lighter gray if falling
-                }
-                else {
-                    ctx.fillStyle = 'black'; // Default color
-                }
+                if (platform.isPlayerOn && !platform.isFalling) ctx.fillStyle = '#555';
+                else if (platform.isFalling) ctx.fillStyle = '#AAA';
+                else ctx.fillStyle = 'black';
                 ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+
+                // Draw Label
+                if (platform.labelNumber !== null) {
+                    ctx.fillStyle = 'white';
+                    ctx.font = '10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(platform.labelNumber, platform.x + platform.width / 2, platform.y + platform.height / 2);
+                }
             });
 
             // Draw Score
             ctx.fillStyle = 'black';
             ctx.font = '20px Arial';
             ctx.textAlign = 'left';
+            ctx.textBaseline = 'alphabetic';
             ctx.fillText('Score: ' + score, 10, 30);
 
             // Optional: Game Over check
