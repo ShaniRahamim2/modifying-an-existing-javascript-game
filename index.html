@@ -1,499 +1,879 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Platformer Game - Debug Enemies</title>
-    <style>
-        body, html { margin: 0; padding: 0; overflow: hidden; }
-        #gameCanvas { display: block; margin: auto; cursor: default; }
-        #gameCanvas.button-hover { cursor: pointer; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Platformer Game - Consistent Timer</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #333;
+    }
+    #gameCanvas {
+      display: block;
+      margin: auto;
+      cursor: default;
+      background-color: #fff;
+    }
+    #gameCanvas.button-hover {
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="400" height="600"></canvas>
+  <canvas id="gameCanvas" width="400" height="600"></canvas>
+  <!-- Audio Elements -->
+  <audio id="bgMusic" loop preload="auto" src="./scene2b-birds-chirpingpro-shgovmbf.wav">
+    Your browser does not support the audio element.
+  </audio>
+  <audio id="gameOverSound" preload="auto" src="./sad-trombone-muted-trumpe-xaub3dyc.wav">
+    Your browser does not support the audio element.
+  </audio>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const bgMusic = document.getElementById('bgMusic');
+    const gameOverSound = document.getElementById('gameOverSound');
 
-    <!-- Background Music -->
-    <audio id="bgMusic" loop preload="auto" src="./scene2b-birds-chirpingpro-shgovmbf.wav">
-        Your browser does not support the audio element.
-    </audio>
+    // --- Constants and Settings ---
+    const gravity = 0.5;
+    const friction = 0.8;
+    const baseJump = -12;
+    const platformFallDelay = 4;
+    const platformFallSpeed = 2;
+    const enemyChance = 0.15;
+    const enemyWidth = 20;
+    const enemyHeight = 20;
+    const enemyType2Speed = 1;
+    const platformWidth = 100;
+    const platformHeight = 20;
+    const platformMinSpacing = 80;
+    const platformMaxSpacing = 150;
+    const leaderboardSize = 10;
+    const localStorageKey = 'platformerTopScores';
+    const playerWidth = 25;
+    const playerHeight = 25;
+    const WIDE_PLATFORM_CHANCE = 0.2;
+    const WIDE_PLATFORM_WIDTH = 150;
+    const PLATFORM_VERTICAL_CHECK_DISTANCE = platformMaxSpacing + platformHeight;
+    const MAX_PLACEMENT_ATTEMPTS = 10;
+    const MOVING_PLATFORM_CHANCE = 0.06;
+    const MOVING_PLATFORM_RANGE = 50;
+    const MOVING_PLATFORM_SPEED = 0.8;
+    const POWERUP_CHANCE = 0.04;
+    const INVINCIBILITY_DURATION = 7;
+    const STAR_POWERUP_WIDTH = 18;
+    const STAR_POWERUP_HEIGHT = 18;
+    const SPRING_CHANCE = 0.04;
+    const SPRING_WIDTH = 20;
+    const SPRING_HEIGHT = 15;
+    const SPRING_JUMP_BOOST = 1.9;
+    const NUM_INITIAL_PLATFORMS = 10;
+    const FIRST_PLATFORM_Y_OFFSET = 110;
 
-    <!-- Game Over Sound Effect -->
-    <audio id="gameOverSound" preload="auto" src="./sad-trombone-muted-trumpe-xaub3dyc.wav">
-        Your browser does not support the audio element.
-    </audio>
+    // --- Image Asset Paths ---
+    const PLAYER_IMG_SRC = './MarioNSMBUDeluxe.png';
+    const PLATFORM_IMG_SRC = './grass.jpeg';
+    const ENEMY1_IMG_SRC = './devil1.jpg';
+    const ENEMY2_IMG_SRC = './devil2.jpg';
+    const BACKGROUND_IMG_SRC = './blue.jpg';
+    const STAR_IMG_SRC = './star.jpg';
+    const SPRING_IMG_SRC = './spring.png';
 
+    // --- Game State Variables ---
+    let player;
+    let platforms = [];
+    let platformCounter;
+    let score;
+    let highestYReached;
+    let keys = {};
+    let lastFrameTime = 0;
+    let gameState = 'LOADING';
+    let musicStarted = false;
+    let topScores = [];
+    let gameTime = 0; // Timer variable
 
-    <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const bgMusic = document.getElementById('bgMusic');
-        const gameOverSound = document.getElementById('gameOverSound');
+    // --- Image Objects ---
+    let playerImg, platformImg, enemy1Img, enemy2Img, backgroundImg, starImg, springImg;
+    let imagesLoaded = 0;
+    const totalImages = 7;
 
-        // --- Constants and Settings ---
-        const gravity = 0.5;
-        const friction = 0.8;
-        const baseJump = -12;
-        const platformFallDelay = 4;
-        const platformFallSpeed = 2;
-        const enemyChance = 0.15;
-        const enemyWidth = 20;
-        const enemyHeight = 20;
-        const enemyType2Speed = 1;
-        const platformWidth = 100; // <<< Standard platform width
-        const platformHeight = 20;
-        const widePlatformWidth = 150; // <<< ADDED: Width for wider platforms
-        const widePlatformChance = 0.2; // <<< ADDED: 20% chance for a platform to be wide
-        const initialPlatformMaxHeight = 90;
-        const platformMinSpacing = 80;
-        const platformMaxSpacing = 150;
-        const leaderboardSize = 10;
-        const localStorageKey = 'platformerTopScores';
-        const playerWidth = 25;
-        const playerHeight = 25;
+    // --- Button Definition ---
+    const playAgainButton = { x: canvas.width / 2 - 75, y: canvas.height / 2 + 70, width: 150, height: 40 };
+    let isHoveringButton = false;
 
-        // --- Image Asset Paths (REPLACE THESE!) ---
-        const PLAYER_IMG_SRC = './MarioNSMBUDeluxe.png';
-        const PLATFORM_IMG_SRC = './grass.jpeg';
-        const ENEMY1_IMG_SRC = './devil1.jpg'; // Verify this path/filename
-        const ENEMY2_IMG_SRC = './devil2.jpg'; // Verify this path/filename
-        const BACKGROUND_IMG_SRC = './blue.jpg';
-
-        // --- Game State Variables ---
-        let player;
-        let platforms;
-        let platformCounter;
-        let score;
-        let highestYReached;
-        let keys = {};
-        let lastFrameTime = 0;
-        let gameRunning = false;
-        let musicStarted = false;
-        let topScores = [];
-
-        // --- Image Objects ---
-        let playerImg;
-        let platformImg;
-        let enemy1Img;
-        let enemy2Img;
-        let backgroundImg;
-        let imagesLoaded = 0;
-        const totalImages = 5;
-
-        // --- Button Definition ---
-        const playAgainButton = {
-            x: canvas.width / 2 - 75,
-            y: canvas.height / 2 + 70,
-            width: 150,
-            height: 40
-        };
-        let isHoveringButton = false;
-
-        // --- Helper Functions ---
-
-        function loadScores() {
-            const storedScores = localStorage.getItem(localStorageKey);
-            if (storedScores) {
-                try {
-                    topScores = JSON.parse(storedScores);
-                    if (!Array.isArray(topScores)) topScores = [];
-                    topScores = topScores.map(Number).filter(Number.isFinite).sort((a, b) => b - a);
-                } catch (e) {
-                    console.error("Error parsing scores:", e); topScores = [];
-                }
-            } else { topScores = []; }
+    // --- Helper Functions ---
+    function loadScores() {
+      const storedScores = localStorage.getItem(localStorageKey);
+      if (storedScores) {
+        try {
+          topScores = JSON.parse(storedScores);
+          if (!Array.isArray(topScores)) topScores = [];
+          topScores = topScores.map(Number).filter(Number.isFinite).sort((a, b) => b - a);
+        } catch (e) {
+          console.error("Error parsing scores from localStorage:", e);
+          topScores = [];
         }
+      } else {
+        topScores = [];
+      }
+    }
+    function saveScores() {
+      if (typeof score === 'number' && isFinite(score)) {
+        topScores.push(score);
+      } else {
+        console.warn("Attempted to save invalid score:", score);
+      }
+      topScores.sort((a, b) => b - a);
+      topScores = topScores.slice(0, leaderboardSize);
+      localStorage.setItem(localStorageKey, JSON.stringify(topScores));
+    }
+    function createEnemy(platform) {
+      let enemyType = (Math.random() < 0.5) ? 'type1' : 'type2';
+      return {
+        width: enemyWidth,
+        height: enemyHeight,
+        type: enemyType,
+        x: platform.x + (platform.width / 2) - (enemyWidth / 2),
+        y: platform.y - enemyHeight,
+        direction: (enemyType === 'type2') ? 1 : 0,
+        speed: (enemyType === 'type2') ? enemyType2Speed : 0
+      };
+    }
+    function createPowerup(platform) {
+      return {
+        type: 'star',
+        width: STAR_POWERUP_WIDTH,
+        height: STAR_POWERUP_HEIGHT,
+        x: platform.x + platform.width / 2 - STAR_POWERUP_WIDTH / 2,
+        y: platform.y - STAR_POWERUP_HEIGHT
+      };
+    }
+    function createSpring(platform) {
+      return {
+        type: 'spring',
+        width: SPRING_WIDTH,
+        height: SPRING_HEIGHT,
+        x: platform.x + platform.width / 2 - SPRING_WIDTH / 2,
+        y: platform.y - SPRING_HEIGHT
+      };
+    }
+    function playMusic() {
+      if (musicStarted) return;
+      let playPromise = bgMusic.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          console.log("Background music started.");
+          musicStarted = true;
+        }).catch(error => {
+          console.log("Background music playback prevented by browser:", error);
+          musicStarted = false;
+        });
+      } else {
+        console.log("Audio play() did not return a promise (may be blocked).");
+        musicStarted = false;
+      }
+    }
+    function stopMusic() {
+      bgMusic.pause();
+      bgMusic.currentTime = 0;
+      musicStarted = false;
+    }
+    function playGameOverSound() {
+      gameOverSound.currentTime = 0;
+      let playPromise = gameOverSound.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(error => {
+          console.log("Game over sound failed to play:", error);
+        });
+      }
+    }
+    function isOverlapping(newPlatformX, newPlatformY, newPlatformWidth, checkPlatforms) {
+      for (const existingPlatform of checkPlatforms) {
+        if (Math.abs(newPlatformY - existingPlatform.y) < PLATFORM_VERTICAL_CHECK_DISTANCE) {
+          if (newPlatformX < existingPlatform.x + existingPlatform.width &&
+              newPlatformX + newPlatformWidth > existingPlatform.x) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+    function findSafeX(platformY, platformWidth, checkPlatforms) {
+      let attempts = 0;
+      let safeX;
+      let overlapping;
+      do {
+        safeX = Math.random() * (canvas.width - platformWidth);
+        overlapping = isOverlapping(safeX, platformY, platformWidth, checkPlatforms);
+        attempts++;
+      } while (overlapping && attempts < MAX_PLACEMENT_ATTEMPTS);
+      if (overlapping) {
+        console.warn(`Overlap detected repeatedly for platform at Y=${platformY.toFixed(0)}. Placing center as fallback.`);
+        safeX = canvas.width / 2 - platformWidth / 2;
+      }
+      return safeX;
+    }
 
-        function saveScores() {
-            if (typeof score === 'number' && isFinite(score)) {
-                topScores.push(score);
-                topScores.sort((a, b) => b - a);
-                topScores = topScores.slice(0, leaderboardSize);
-                localStorage.setItem(localStorageKey, JSON.stringify(topScores));
+    // --- Game Initialization / Reset ---
+    function initGameData() {
+      console.log("Initializing game data for new game...");
+      stopMusic();
+      gameOverSound.pause();
+      gameOverSound.currentTime = 0;
+      // Reset משתנים קריטיים
+      keys = {};
+      gameTime = 0;
+      lastFrameTime = performance.now();
+      
+      player = {
+        x: canvas.width / 2 - (playerWidth / 2),
+        y: canvas.height - playerHeight,
+        width: playerWidth,
+        height: playerHeight,
+        speed: 5,
+        velX: 0,
+        velY: 0,
+        jumping: false,
+        currentPlatform: null,
+        onGround: true,
+        isInvincible: false,
+        invincibilityTimer: 0
+      };
+      platforms = [];
+      platformCounter = 0;
+      let lastPlatformY;
+      for (let i = 0; i < NUM_INITIAL_PLATFORMS; i++) {
+        platformCounter++;
+        let currentPlatformWidth = (Math.random() < WIDE_PLATFORM_CHANCE) ? WIDE_PLATFORM_WIDTH : platformWidth;
+        let platformX, platformY, newPlatform;
+        if (i === 0) {
+          platformY = canvas.height - FIRST_PLATFORM_Y_OFFSET;
+          platformX = canvas.width / 2 - currentPlatformWidth / 2 + (Math.random() * 80 - 40);
+          platformX = Math.max(0, Math.min(canvas.width - currentPlatformWidth, platformX));
+          newPlatform = {
+            x: platformX,
+            y: platformY,
+            width: currentPlatformWidth,
+            height: platformHeight,
+            standTimer: 0,
+            isFalling: false,
+            isPlayerOn: false,
+            labelNumber: null,
+            enemy: null,
+            powerup: null,
+            spring: null,
+            isMoving: false,
+            originalY: platformY,
+            moveDirection: 1
+          };
+        } else {
+          let spacing = Math.random() * (platformMaxSpacing - platformMinSpacing) + platformMinSpacing;
+          platformY = lastPlatformY - spacing;
+          platformX = findSafeX(platformY, currentPlatformWidth, platforms);
+          newPlatform = {
+            x: platformX,
+            y: platformY,
+            width: currentPlatformWidth,
+            height: platformHeight,
+            standTimer: 0,
+            isFalling: false,
+            isPlayerOn: false,
+            labelNumber: (platformCounter % 10 === 0) ? platformCounter : null,
+            enemy: null,
+            powerup: null,
+            spring: null,
+            isMoving: false,
+            originalY: platformY,
+            moveDirection: 1
+          };
+          if (platformY < canvas.height - 150) {
+            if (Math.random() < MOVING_PLATFORM_CHANCE) newPlatform.isMoving = true;
+            let featureChanceMultiplier = Math.max(0.3, (canvas.height - platformY) / canvas.height);
+            if (Math.random() < enemyChance * featureChanceMultiplier) {
+              newPlatform.enemy = createEnemy(newPlatform);
+            } else if (Math.random() < POWERUP_CHANCE * featureChanceMultiplier) {
+              newPlatform.powerup = createPowerup(newPlatform);
+            } else if (Math.random() < SPRING_CHANCE * featureChanceMultiplier) {
+              newPlatform.spring = createSpring(newPlatform);
+            }
+          }
+        }
+        platforms.push(newPlatform);
+        lastPlatformY = platformY;
+      }
+      score = 0;
+      highestYReached = player.y;
+      gameState = 'RUNNING';
+      console.log("Game data initialized. State: RUNNING");
+    }
+
+    // --- Start Game Function ---
+    function startGame() {
+      if (gameState === 'READY' || gameState === 'GAMEOVER') {
+        console.log("Starting game...");
+        initGameData();
+        playMusic();
+      }
+    }
+
+    // --- Game Over Handling ---
+    function gameOver(reason) {
+      if (gameState !== 'RUNNING') return;
+      console.log("Game Over:", reason);
+      gameState = 'GAMEOVER';
+      stopMusic();
+      playGameOverSound();
+      saveScores();
+    }
+
+    // --- Drawing Functions ---
+    function drawLoadingScreen() {
+      ctx.fillStyle = '#333';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'white';
+      ctx.font = '24px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`Loading Assets... (${imagesLoaded}/${totalImages})`, canvas.width / 2, canvas.height / 2);
+    }
+    function drawReadyScreen() {
+      if (backgroundImg) {
+        ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = '#87CEEB';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'white';
+      ctx.font = '30px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Click or Press Any Key to Start', canvas.width / 2, canvas.height / 2);
+      ctx.fillStyle = 'white';
+      ctx.font = '18px Arial';
+      ctx.textAlign = 'right';
+      ctx.fillText('Time: 0:00', canvas.width - 10, 30);
+    }
+    function drawGame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (backgroundImg) {
+        ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = '#87CEEB';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      ctx.save();
+      if (player.isInvincible && Math.floor(gameTime * 10) % 2 === 0) {
+        ctx.globalAlpha = 0.5;
+      }
+      if (playerImg) {
+        ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+      } else {
+        ctx.fillStyle = player.isInvincible ? 'gold' : 'red';
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+      }
+      ctx.restore();
+      platforms.forEach(platform => {
+        let platformImageToDraw = platformImg;
+        if (platformImageToDraw) {
+          ctx.drawImage(platformImageToDraw, platform.x, platform.y, platform.width, platform.height);
+        } else {
+          if (platform.isPlayerOn && !platform.isFalling) ctx.fillStyle = '#555';
+          else if (platform.isFalling) ctx.fillStyle = '#AAA';
+          else if (platform.isMoving) ctx.fillStyle = '#4a4a4a';
+          else ctx.fillStyle = 'black';
+          ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = 'white';
+          ctx.strokeRect(platform.x, platform.y, platform.width, platform.height);
+        }
+        if (platform.labelNumber !== null) {
+          ctx.fillStyle = 'black';
+          ctx.font = '10px Arial Black';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.strokeStyle = 'white';
+          ctx.lineWidth = 1;
+          ctx.strokeText(platform.labelNumber, platform.x + platform.width / 2, platform.y + platform.height / 2);
+          ctx.fillText(platform.labelNumber, platform.x + platform.width / 2, platform.y + platform.height / 2);
+        }
+        if (platform.enemy) {
+          let enemy = platform.enemy;
+          let imgToDraw = (enemy.type === 'type1') ? enemy1Img : enemy2Img;
+          if (imgToDraw) {
+            ctx.drawImage(imgToDraw, enemy.x, enemy.y, enemy.width, enemy.height);
+          } else {
+            ctx.fillStyle = (enemy.type === 'type1') ? 'orange' : 'purple';
+            ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+          }
+        }
+        if (platform.powerup) {
+          if (starImg) {
+            ctx.drawImage(starImg, platform.powerup.x, platform.powerup.y, platform.powerup.width, platform.powerup.height);
+          } else {
+            ctx.fillStyle = 'yellow';
+            ctx.beginPath();
+            ctx.arc(platform.powerup.x + platform.powerup.width / 2, platform.powerup.y + platform.powerup.height / 2, platform.powerup.width / 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        if (platform.spring) {
+          if (springImg) {
+            ctx.drawImage(springImg, platform.spring.x, platform.spring.y, platform.spring.width, platform.spring.height);
+          } else {
+            ctx.fillStyle = 'cyan';
+            ctx.fillRect(platform.spring.x, platform.spring.y + platform.spring.height * 0.3, platform.spring.width, platform.spring.height * 0.7);
+            ctx.fillRect(platform.spring.x + platform.spring.width * 0.3, platform.spring.y, platform.spring.width * 0.4, platform.spring.height * 0.4);
+          }
+        }
+      });
+      // --- UI Drawing ---
+      ctx.fillStyle = 'black';
+      ctx.font = '20px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText('Score: ' + score, 10, 30);
+
+      // 
+      if (typeof gameTime === 'number' && isFinite(gameTime)) {
+        const minutes = Math.floor(gameTime / 60);
+        const seconds = Math.floor(gameTime % 60);
+        const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        ctx.fillStyle = 'black';
+        ctx.font = '18px Arial';
+        ctx.textAlign = 'right';
+        ctx.fillText('Time: ' + timeString, canvas.width - 10, 30);
+      } else {
+        ctx.font = '18px Arial';
+        ctx.textAlign = 'right';
+        ctx.fillText('Time: ---', canvas.width - 10, 30);
+        console.warn("gameTime is not valid for drawing:", gameTime);
+      }
+      if (player.isInvincible) {
+        ctx.fillStyle = 'gold';
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'right';
+        ctx.fillText(`Invincible: ${player.invincibilityTimer.toFixed(1)}s`, canvas.width - 10, 55);
+      }
+    }
+    function drawGameOverScreen() {
+      if (backgroundImg) {
+        ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = '#87CEEB';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'white';
+      ctx.font = '40px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 60);
+      ctx.font = '20px Arial';
+      ctx.fillText('Final Score: ' + (typeof score === 'number' ? score : 0), canvas.width / 2, canvas.height / 2 - 20);
+      ctx.fillStyle = isHoveringButton ? '#999' : '#DDD';
+      ctx.fillRect(playAgainButton.x, playAgainButton.y, playAgainButton.width, playAgainButton.height);
+      ctx.fillStyle = 'black';
+      ctx.font = '18px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Play Again', playAgainButton.x + playAgainButton.width / 2, playAgainButton.y + playAgainButton.height / 2);
+      ctx.fillStyle = 'white';
+      ctx.font = '18px Arial';
+      ctx.fillText('Top Scores:', canvas.width / 2, canvas.height / 2 + 130);
+      ctx.font = '16px Arial';
+      topScores.forEach((s, index) => {
+        if (index < leaderboardSize)
+          ctx.fillText(`${index + 1}. ${s}`, canvas.width / 2, canvas.height / 2 + 160 + (index * 20));
+      });
+      if (topScores.length === 0)
+        ctx.fillText("No scores yet!", canvas.width / 2, canvas.height / 2 + 160);
+    }
+
+    // --- Main Game Logic Update Function ---
+    function updateGameLogic() {
+      let now = performance.now();
+      let deltaTime = (lastFrameTime > 0) ? (now - lastFrameTime) / 1000 : 0;
+      lastFrameTime = now;
+      gameTime += deltaTime;
+
+      // Input & Basic Movement
+      if (keys[39]) {
+        if (player.velX < player.speed) player.velX++;
+      } else if (keys[37]) {
+        if (player.velX > -player.speed) player.velX--;
+      } else {
+        player.velX *= friction;
+      }
+      // Apply Physics
+      player.velY += gravity;
+      player.x += player.velX;
+      player.y += player.velY;
+
+      // Invincibility Timer
+      if (player.isInvincible) {
+        player.invincibilityTimer -= deltaTime;
+        if (player.invincibilityTimer <= 0) {
+          player.isInvincible = false;
+          player.invincibilityTimer = 0;
+          console.log("Invincibility ended");
+        }
+      }
+      // Screen Boundaries (Left/Right)
+      if (player.x >= canvas.width - player.width) {
+        player.x = canvas.width - player.width;
+        player.velX = 0;
+      } else if (player.x <= 0) {
+        player.x = 0;
+        player.velX = 0;
+      }
+      // Falling Off Bottom Check
+      if (player.y > canvas.height) {
+        console.log(`Player completely off screen: Y=${player.y.toFixed(1)}`);
+        gameOver("Fell completely off screen");
+        return;
+      }
+      // Update Platforms & Associated Items
+      platforms.forEach(platform => {
+        if (platform.isFalling) {
+          platform.y += platformFallSpeed;
+          if (platform.enemy) platform.enemy.y = platform.y - platform.enemy.height;
+          if (platform.powerup) platform.powerup.y = platform.y - platform.powerup.height;
+          if (platform.spring) platform.spring.y = platform.y - platform.spring.height;
+        } else if (platform.isPlayerOn) {
+          platform.standTimer += deltaTime;
+          if (platform.standTimer >= platformFallDelay) {
+            platform.isFalling = true;
+            platform.isPlayerOn = false;
+            if (player.currentPlatform === platform) player.currentPlatform = null;
+          }
+        } else {
+          platform.standTimer = 0;
+        }
+        if (platform.isMoving && !platform.isFalling) {
+          platform.y += MOVING_PLATFORM_SPEED * platform.moveDirection;
+          if (platform.y <= platform.originalY - MOVING_PLATFORM_RANGE) {
+            platform.y = platform.originalY - MOVING_PLATFORM_RANGE;
+            platform.moveDirection = 1;
+          } else if (platform.y >= platform.originalY + MOVING_PLATFORM_RANGE) {
+            platform.y = platform.originalY + MOVING_PLATFORM_RANGE;
+            platform.moveDirection = -1;
+          }
+          if (platform.enemy) platform.enemy.y = platform.y - platform.enemy.height;
+          if (platform.powerup) platform.powerup.y = platform.y - platform.powerup.height;
+          if (platform.spring) platform.spring.y = platform.y - platform.spring.height;
+        }
+        if (platform.enemy && !platform.isFalling) {
+          let enemy = platform.enemy;
+          enemy.y = platform.y - enemy.height;
+          if (enemy.type === 'type2') {
+            enemy.x += enemy.speed * enemy.direction;
+            if (enemy.x <= platform.x || enemy.x + enemy.width >= platform.x + platform.width) {
+              enemy.direction *= -1;
+              enemy.x = Math.max(platform.x, Math.min(enemy.x, platform.x + platform.width - enemy.width));
+            }
+          }
+        }
+        if (platform.powerup && !platform.isFalling && !platform.isMoving) {
+          platform.powerup.y = platform.y - platform.powerup.height;
+        }
+        if (platform.spring && !platform.isFalling && !platform.isMoving) {
+          platform.spring.y = platform.y - platform.spring.height;
+        }
+      });
+      // Screen Scroll
+      let scrollOffset = 0;
+      if (player.y < canvas.height / 3) {
+        scrollOffset = canvas.height / 3 - player.y;
+        player.y = canvas.height / 3;
+        highestYReached -= scrollOffset;
+        platforms.forEach(platform => {
+          platform.y += scrollOffset;
+          if (platform.isMoving) platform.originalY += scrollOffset;
+          if (platform.enemy) platform.enemy.y += scrollOffset;
+          if (platform.powerup) platform.powerup.y += scrollOffset;
+          if (platform.spring) platform.spring.y += scrollOffset;
+        });
+      }
+      // Platform Recycling
+      platforms.forEach(platform => {
+        if (platform.y > canvas.height + platformMaxSpacing) {
+          platform.isFalling = false;
+          platform.standTimer = 0;
+          platform.isPlayerOn = false;
+          platform.enemy = null;
+          platform.powerup = null;
+          platform.spring = null;
+          platform.isMoving = false;
+          let currentPlatformWidth = (Math.random() < WIDE_PLATFORM_CHANCE) ? WIDE_PLATFORM_WIDTH : platformWidth;
+          platform.width = currentPlatformWidth;
+          let topPlatformY = 0;
+          const otherPlatforms = platforms.filter(p => p !== platform);
+          if (otherPlatforms.length > 0) {
+            topPlatformY = Math.min(...otherPlatforms.map(p => p.y));
+          }
+          let spacing = Math.random() * (platformMaxSpacing - platformMinSpacing) + platformMinSpacing;
+          let targetY = topPlatformY - spacing;
+
+          platform.y = targetY;
+          platform.originalY = platform.y;
+          platform.x = findSafeX(platform.y, platform.width, otherPlatforms);
+          platform.moveDirection = 1;
+          platformCounter++;
+          platform.labelNumber = (platformCounter % 10 === 0) ? platformCounter : null;
+          if (Math.random() < MOVING_PLATFORM_CHANCE) platform.isMoving = true;
+          let featureChanceMultiplier = 1.0;
+          if (Math.random() < enemyChance * featureChanceMultiplier) {
+            platform.enemy = createEnemy(platform);
+          } else if (Math.random() < POWERUP_CHANCE * featureChanceMultiplier) {
+            platform.powerup = createPowerup(platform);
+          } else if (Math.random() < SPRING_CHANCE * featureChanceMultiplier) {
+            platform.spring = createSpring(platform);
+          }
+        }
+      });
+      // --- Collision Detection ---
+      let onPlatformThisFrame = null;
+      let springJumpThisFrame = false;
+      let landedOnFloorThisFrame = false;
+      // 1. Powerup Collision
+      for (const platform of platforms) {
+        if (platform.powerup && !platform.isFalling) {
+          let powerup = platform.powerup;
+          if (player.x < powerup.x + powerup.width &&
+              player.x + player.width > powerup.x &&
+              player.y < powerup.y + powerup.height &&
+              player.y + player.height > powerup.y) {
+            console.log("Star powerup collected!");
+            player.isInvincible = true;
+            player.invincibilityTimer = INVINCIBILITY_DURATION;
+            platform.powerup = null;
+            break;
+          }
+        }
+      }
+      // 2. Enemy Collision
+      for (const platform of platforms) {
+        if (platform.enemy && !platform.isFalling) {
+          let enemy = platform.enemy;
+          if (player.x < enemy.x + enemy.width &&
+              player.x + player.width > enemy.x &&
+              player.y < enemy.y + enemy.height &&
+              player.y + player.height > enemy.y) {
+            if (!player.isInvincible) {
+              gameOver("Hit enemy");
+              return;
             } else {
-                console.warn("Invalid score, not saving:", score);
-                topScores.sort((a, b) => b - a);
-                localStorage.setItem(localStorageKey, JSON.stringify(topScores.slice(0, leaderboardSize)));
+              console.log("Enemy collision ignored due to invincibility");
             }
+          }
         }
-
-        function createEnemy(platform) {
-            let enemyType = (Math.random() < 0.5) ? 'type1' : 'type2';
-            console.log(` -> Creating Enemy (${enemyType}) for platform`); // DEBUG LOG
-            return {
-                width: enemyWidth,
-                height: enemyHeight,
-                type: enemyType,
-                x: platform.x + (platform.width / 2) - (enemyWidth / 2), // Uses platform's actual width
-                y: platform.y - enemyHeight, // Place on top
-                direction: (enemyType === 'type2') ? 1 : 0,
-                speed: (enemyType === 'type2') ? enemyType2Speed : 0
-            };
+      }
+      // 3. Platform / Spring / Floor Collision
+      player.onGround = false;
+      if (player.y + player.height >= canvas.height && player.velY >= 0) {
+        if (player.velY > gravity) {
+          console.log(`Player hit floor while falling: Y=${player.y.toFixed(1)}, VelY=${player.velY.toFixed(1)}`);
+          gameOver("Landed on floor");
+          return;
+        } else {
+          player.y = canvas.height - player.height;
+          player.velY = 0;
+          player.jumping = false;
+          player.onGround = true;
+          landedOnFloorThisFrame = true;
+          onPlatformThisFrame = null;
+          player.currentPlatform = null;
         }
-
-        // --- Music & Sound Control Functions ---
-        function playMusic() {
-            let playPromise = bgMusic.play();
-            if (playPromise !== undefined) {
-                playPromise.then(_ => {
-                    console.log("Background music started successfully."); musicStarted = true;
-                }).catch(error => {
-                    console.log("Music playback failed or was prevented:", error); musicStarted = false;
-                });
-            } else { console.log("bgMusic.play() did not return a promise."); }
-        }
-
-        function stopMusic() {
-            bgMusic.pause(); bgMusic.currentTime = 0; musicStarted = false;
-        }
-
-        function playGameOverSound() {
-            gameOverSound.currentTime = 0; let playPromise = gameOverSound.play();
-            if (playPromise !== undefined) { playPromise.catch(error => { console.log("Game over sound playback failed:", error); }); }
-        }
-
-
-        // --- Game Initialization / Reset ---
-        function resetGame() {
-            console.log("Resetting game...");
-            stopMusic(); gameOverSound.pause(); gameOverSound.currentTime = 0;
-
-            player = {
-                x: canvas.width / 2 - (playerWidth / 2), y: canvas.height - playerHeight,
-                width: playerWidth, height: playerHeight, speed: 5,
-                velX: 0, velY: 0, jumping: false,
-                currentPlatform: null, onGround: true
-            };
-
-            platforms = [];
-            platformCounter = 0;
-
-            // Initial Platform Generation
-            for (let i = 0; i < 10; i++) { // Create initial 10 platforms
-                 platformCounter++;
-                 let platformY;
-                 if (i === 0) {
-                     platformY = player.y - (Math.random() * (initialPlatformMaxHeight - platformHeight) + platformHeight + 10);
-                 } else {
-                     let spacing = Math.random() * (platformMaxSpacing - platformMinSpacing) + platformMinSpacing;
-                     platformY = platforms[i-1].y - spacing; // Base position on the previous platform
-                 }
-
-                 // *** CHANGED: Determine platform width randomly ***
-                 let currentPlatformWidth = (Math.random() < widePlatformChance) ? widePlatformWidth : platformWidth;
-
-                 let newPlatform = {
-                    // *** CHANGED: Use determined width for positioning and property ***
-                    x: Math.random() * (canvas.width - currentPlatformWidth),
-                    y: platformY,
-                    width: currentPlatformWidth, // <<< Use the determined width
-                    height: platformHeight,
-                    standTimer: 0,
-                    isFalling: false,
-                    isPlayerOn: false,
-                    labelNumber: (platformCounter % 10 === 0) ? platformCounter : null,
-                    enemy: null
-                 };
-
-                 // Add enemy check
-                 if (Math.random() < enemyChance) {
-                    console.log(`Attempting to add enemy to initial platform ${platformCounter}`); // DEBUG LOG
-                    newPlatform.enemy = createEnemy(newPlatform);
-                 }
-                 platforms.push(newPlatform);
-            }
-
-
-            score = 0;
-            highestYReached = canvas.height;
-            keys = {};
-            lastFrameTime = performance.now();
-            gameRunning = true;
-            musicStarted = false;
-
-            playMusic();
-        }
-
-        // --- Game Over Handling ---
-        function gameOver(reason) {
-            if (!gameRunning) return;
-            console.log("Game Over:", reason);
-            gameRunning = false;
-            stopMusic();
-            playGameOverSound();
-            saveScores();
-        }
-
-        // --- Drawing Functions ---
-        function drawGame() {
-             ctx.clearRect(0, 0, canvas.width, canvas.height);
-             if (backgroundImg) { ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height); }
-             else { ctx.fillStyle = '#87CEEB'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
-
-             if (playerImg) { ctx.drawImage(playerImg, player.x, player.y, player.width, player.height); }
-             else { ctx.fillStyle = 'red'; ctx.fillRect(player.x, player.y, player.width, player.height); }
-
-             platforms.forEach(platform => {
-                 // Uses platform.width, so automatically handles wide/normal drawing
-                 if (platformImg) { ctx.drawImage(platformImg, platform.x, platform.y, platform.width, platform.height); }
-                 else { if (platform.isPlayerOn && !platform.isFalling) ctx.fillStyle = '#555'; else if (platform.isFalling) ctx.fillStyle = '#AAA'; else ctx.fillStyle = 'black'; ctx.fillRect(platform.x, platform.y, platform.width, platform.height); }
-
-                 if (platform.labelNumber !== null) { ctx.fillStyle = 'black'; ctx.font = '10px Arial Black'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.strokeStyle = 'white'; ctx.lineWidth = 1; ctx.strokeText(platform.labelNumber, platform.x + platform.width / 2, platform.y + platform.height / 2); ctx.fillText(platform.labelNumber, platform.x + platform.width / 2, platform.y + platform.height / 2); }
-
-                 if (platform.enemy) { // Draw enemy if it exists
-                      let enemy = platform.enemy;
-                      let imgToDraw = (enemy.type === 'type1') ? enemy1Img : enemy2Img;
-                      if (imgToDraw) {
-                          ctx.drawImage(imgToDraw, enemy.x, enemy.y, enemy.width, enemy.height);
-                      } else { // Fallback rectangle
-                          ctx.fillStyle = (enemy.type === 'type1') ? 'orange' : 'purple';
-                          ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
-                      }
-                 }
-             });
-             ctx.fillStyle = 'black'; ctx.font = '20px Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillText('Score: ' + score, 10, 30);
-        }
-
-        function drawGameOverScreen() {
-            if (backgroundImg) { ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height); }
-            else { ctx.fillStyle = '#87CEEB'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = 'white'; ctx.font = '40px Arial'; ctx.textAlign = 'center';
-            ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 60);
-            ctx.font = '20px Arial';
-            ctx.fillText('Final Score: ' + (typeof score === 'number' ? score : 0), canvas.width / 2, canvas.height / 2 - 20);
-            ctx.fillStyle = isHoveringButton ? '#999' : '#DDD';
-            ctx.fillRect(playAgainButton.x, playAgainButton.y, playAgainButton.width, playAgainButton.height);
-            ctx.fillStyle = 'black'; ctx.font = '18px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('Play Again', playAgainButton.x + playAgainButton.width / 2, playAgainButton.y + playAgainButton.height / 2);
-            ctx.fillStyle = 'white'; ctx.font = '18px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-            ctx.fillText('Top Scores:', canvas.width / 2, canvas.height / 2 + 130);
-            ctx.font = '16px Arial';
-            topScores.forEach((s, index) => { if (index < leaderboardSize) ctx.fillText(`${index + 1}. ${s}`, canvas.width / 2, canvas.height / 2 + 160 + (index * 20)); });
-            if (topScores.length === 0) ctx.fillText("No scores yet!", canvas.width / 2, canvas.height / 2 + 160);
-        }
-
-        // --- Main Game Loop ---
-        function updateGame() {
-            requestAnimationFrame(updateGame);
-
-            if (!gameRunning) {
-                drawGameOverScreen();
-                return;
-            }
-
-            // --- Game Logic ---
-            let now = performance.now();
-            let deltaTime = (lastFrameTime > 0) ? (now - lastFrameTime) / 1000 : 0;
-            lastFrameTime = now;
-
-            // Input & Movement
-            if (keys[39]) { if (player.velX < player.speed) player.velX++; }
-            else if (keys[37]) { if (player.velX > -player.speed) player.velX--; }
-            else { player.velX *= friction; }
-
-            if (!musicStarted && (keys[39] || keys[37] || keys[32])) { playMusic(); }
-
-            player.velY += gravity;
-            player.x += player.velX;
-            player.y += player.velY;
-
-            // Falling Off Bottom Check
-            if (player.y >= canvas.height) { gameOver("Fell off screen"); return; }
-
-            // Platform & Enemy Logic
-            if (gameRunning) {
-                 platforms.forEach(platform => {
-                     if (platform.isFalling) { platform.y += platformFallSpeed; if (platform.enemy) platform.enemy.y = platform.y - platform.enemy.height; }
-                     else if (platform.isPlayerOn) { platform.standTimer += deltaTime; if (platform.standTimer >= platformFallDelay) { platform.isFalling = true; platform.isPlayerOn = false; if (player.currentPlatform === platform) player.currentPlatform = null; } }
-                     else { platform.standTimer = 0; }
-
-                     // Enemy movement uses platform.width, so it adjusts automatically to wide platforms
-                     if (platform.enemy && !platform.isFalling) { let enemy = platform.enemy; enemy.y = platform.y - enemy.height; if (enemy.type === 'type2') { enemy.x += enemy.speed * enemy.direction; if (enemy.x <= platform.x || enemy.x + enemy.width >= platform.x + platform.width) { enemy.direction *= -1; enemy.x = Math.max(platform.x, Math.min(enemy.x, platform.x + platform.width - enemy.width)); } } }
-                 });
-            }
-
-            // Screen Scroll & Recycling
-            if (gameRunning) {
-                let scrollOffset = 0;
-                if (player.y < canvas.height / 4) {
-                    scrollOffset = Math.abs(player.velY) > 1 ? Math.abs(player.velY) : (canvas.height / 4 - player.y);
-                    if (scrollOffset < 0) scrollOffset = 0;
-                    player.y += scrollOffset; highestYReached += scrollOffset;
-
-                    platforms.forEach(platform => {
-                        platform.y += scrollOffset;
-                        if (platform.enemy) platform.enemy.y = platform.y - platform.enemy.height;
-
-                        // Corrected Recycling Logic
-                        if (platform.y > canvas.height) {
-                            // --- Reset state ---
-                            platform.isFalling = false; platform.standTimer = 0; platform.isPlayerOn = false;
-                            platform.enemy = null;
-
-                            // *** CHANGED: Determine platform width randomly ***
-                            let currentPlatformWidth = (Math.random() < widePlatformChance) ? widePlatformWidth : platformWidth;
-                            platform.width = currentPlatformWidth; // <<< Set the determined width
-
-                            // --- Reposition the platform ALWAYS ---
-                            let topPlatformY = Math.min(...platforms.map(p => p.y).filter(y => y > -Infinity && y < canvas.height));
-                            if (topPlatformY === Infinity) topPlatformY = player.y - canvas.height / 2;
-                            let spacing = Math.random() * (platformMaxSpacing - platformMinSpacing) + platformMinSpacing;
-                            platform.y = topPlatformY - spacing;
-                            // *** CHANGED: Use determined width for positioning ***
-                            platform.x = Math.random() * (canvas.width - platform.width); // Uses the new platform.width
-
-                            // --- Assign Label ---
-                            platformCounter++;
-                            platform.labelNumber = (platformCounter % 10 === 0) ? platformCounter : null;
-
-                            // --- Add Enemy (Optional) AFTER repositioning ---
-                            if (Math.random() < enemyChance) {
-                                console.log(`Attempting to add enemy to recycled platform ${platformCounter}`); // DEBUG LOG
-                                platform.enemy = createEnemy(platform); // Create based on NEW position and width
-                            }
-                        }
-                    });
-                }
-            }
-
-
-            // Collision Detection
-            if (gameRunning) {
-                if (player.x >= canvas.width - player.width) { player.x = canvas.width - player.width; player.velX = 0; }
-                else if (player.x <= 0) { player.x = 0; player.velX = 0; }
-
-                let onPlatformThisFrame = null;
-                let hitGroundThisFrame = false;
-
-                // Ground Collision Check
-                if (player.y >= canvas.height - player.height) {
-                    if (player.velY > 0 && !player.onGround) { gameOver("Landed on ground"); return; }
-                    else if (player.velY >= 0 && player.onGround) { player.y = canvas.height - player.height; player.velY = 0; player.jumping = false; }
-                }
-
-                // Platform/Enemy Collisions
-                if (gameRunning) {
-                    for (const platform of platforms) {
-                        // Enemy collision
-                        if (platform.enemy && !platform.isFalling) {
-                            let enemy = platform.enemy;
-                            // Collision logic remains the same, uses enemy and player properties
-                            if (player.x < enemy.x + enemy.width && player.x + player.width > enemy.x &&
-                                player.y < enemy.y + enemy.height && player.y + player.height > enemy.y) {
-                                gameOver("Hit enemy"); return; // Exit immediately
-                            }
-                        }
-                        // Platform collision
-                        // Collision logic remains the same, uses platform.width
-                        if (!platform.isFalling && !onPlatformThisFrame) {
-                            if (player.velY >= 0 && player.x < platform.x + platform.width && player.x + player.width > platform.x &&
-                                player.y + player.height >= platform.y && player.y + player.height <= platform.y + platform.height + Math.max(1, player.velY)) {
-                                let landingY = platform.y - player.height;
-                                if (landingY < highestYReached) { let heightGain = Math.round(highestYReached - landingY); score += heightGain; score += Math.round(heightGain * 0.1); highestYReached = landingY; }
-                                player.jumping = false; player.velY = 0; player.y = platform.y - player.height;
-                                onPlatformThisFrame = platform;
-                            }
-                        }
+      }
+      if (!landedOnFloorThisFrame && player.velY >= 0) {
+        for (const platform of platforms) {
+          if (!platform.isFalling) {
+            if (player.x < platform.x + platform.width &&
+                player.x + player.width > platform.x &&
+                player.y + player.height >= platform.y &&
+                player.y + player.height <= platform.y + platform.height + player.velY) {
+              if (platform.spring &&
+                  player.x + player.width > platform.spring.x &&
+                  player.x < platform.spring.x + platform.spring.width &&
+                  player.y + player.height >= platform.spring.y &&
+                  player.y + player.height <= platform.spring.y + SPRING_HEIGHT + player.velY) {
+                console.log("Hit Spring!");
+                player.jumping = true;
+                player.onGround = false;
+                player.velY = baseJump * SPRING_JUMP_BOOST;
+                player.currentPlatform = null;
+                onPlatformThisFrame = null;
+                springJumpThisFrame = true;
+                platform.isPlayerOn = false;
+                break;
+              } else if (!springJumpThisFrame) {
+                    let landingY = platform.y - player.height;
+                    if (landingY < highestYReached) {
+                    let heightGain = Math.round(highestYReached - landingY);
+                    if (heightGain > 0) {
+                        score += heightGain;
+                        // 
+                        console.log(`Score updated: +${heightGain} = ${score}. Landed Y: ${landingY.toFixed(1)}, Old highestY: ${highestYReached.toFixed(1)}`);
                     }
+                highestYReached = landingY; 
                 }
-
-                // Update Player Status
-                if (gameRunning) {
-                    player.onGround = !onPlatformThisFrame && player.y >= canvas.height - player.height;
-                    if (onPlatformThisFrame && player.currentPlatform !== onPlatformThisFrame) { if (player.currentPlatform) { player.currentPlatform.isPlayerOn = false; player.currentPlatform.standTimer = 0; } player.currentPlatform = onPlatformThisFrame; player.currentPlatform.isPlayerOn = true; player.currentPlatform.standTimer = 0; player.onGround = false; }
-                    else if (!onPlatformThisFrame && !player.onGround && player.currentPlatform) { player.currentPlatform.isPlayerOn = false; player.currentPlatform.standTimer = 0; player.currentPlatform = null; }
-                    else if (player.onGround && player.currentPlatform) { player.currentPlatform.isPlayerOn = false; player.currentPlatform.standTimer = 0; player.currentPlatform = null; }
-                }
+                player.jumping = false;
+                player.velY = 0;
+                player.y = landingY;
+                onPlatformThisFrame = platform;
+                platform.isPlayerOn = true;
+                player.onGround = true;
+                break;
+              }
             }
-
-            // --- Drawing ---
-            if (gameRunning) {
-                drawGame();
-            }
+          }
         }
-
-        // --- Event Listeners ---
-        window.addEventListener('keydown', function(e) {
-            if (e.key === "ArrowRight" || e.keyCode === 39) keys[39] = true;
-            if (e.key === "ArrowLeft" || e.keyCode === 37) keys[37] = true;
-            if (e.key === " " || e.keyCode === 32) {
-                keys[32] = true;
-                if (gameRunning && !player.jumping && (player.currentPlatform || player.onGround)) {
-                    player.jumping = true;
-                    player.onGround = false;
-                    player.velY = baseJump - Math.abs(player.velX * 0.1);
-                    if (player.currentPlatform) {
-                        player.currentPlatform.isPlayerOn = false;
-                        player.currentPlatform.standTimer = 0;
-                        player.currentPlatform = null;
-                    }
-                }
-            }
-            if (!musicStarted && (keys[39] || keys[37] || keys[32])) { playMusic(); }
-        });
-        window.addEventListener('keyup', function(e) {
-            if (e.key === "ArrowRight" || e.keyCode === 39) keys[39] = false;
-            if (e.key === "ArrowLeft" || e.keyCode === 37) keys[37] = false;
-            if (e.key === " " || e.keyCode === 32) keys[32] = false;
-        });
-        canvas.addEventListener('click', function(event) {
-            if (!gameRunning) {
-                const rect = canvas.getBoundingClientRect();
-                const clickX = event.clientX - rect.left;
-                const clickY = event.clientY - rect.top;
-                if (clickX >= playAgainButton.x && clickX <= playAgainButton.x + playAgainButton.width &&
-                    clickY >= playAgainButton.y && clickY <= playAgainButton.y + playAgainButton.height) {
-                    resetGame();
-                }
-            } else {
-                if (!musicStarted) { playMusic(); }
-            }
-        });
-        canvas.addEventListener('mousemove', function(event) {
-            if (!gameRunning) {
-                const rect = canvas.getBoundingClientRect();
-                const mouseX = event.clientX - rect.left;
-                const mouseY = event.clientY - rect.top;
-                if (mouseX >= playAgainButton.x && mouseX <= playAgainButton.x + playAgainButton.width &&
-                    mouseY >= playAgainButton.y && mouseY <= playAgainButton.y + playAgainButton.height) {
-                    if (!isHoveringButton) { isHoveringButton = true; canvas.classList.add('button-hover'); }
-                } else {
-                    if (isHoveringButton) { isHoveringButton = false; canvas.classList.remove('button-hover'); }
-                }
-            } else {
-                 if (isHoveringButton) { isHoveringButton = false; canvas.classList.remove('button-hover'); }
-            }
-        });
-
-        // --- Image Loading and Game Start ---
-        function imageLoaded() {
-            imagesLoaded++;
-            console.log(`Image loaded (${imagesLoaded}/${totalImages})`);
-            if (imagesLoaded === totalImages) {
-                console.log("All images loaded. Starting game.");
-                resetGame();
-                updateGame();
-            }
+      }
+      if (!landedOnFloorThisFrame && !springJumpThisFrame) {
+        if (player.currentPlatform && player.currentPlatform !== onPlatformThisFrame) {
+          player.currentPlatform.isPlayerOn = false;
+          player.currentPlatform.standTimer = 0;
         }
-        function loadImage(src) {
-            const img = new Image();
-            img.onload = imageLoaded;
-            img.onerror = () => { console.error(`Failed to load image: ${src}`); imageLoaded(); };
-            img.src = src;
-            return img;
+        player.currentPlatform = onPlatformThisFrame;
+        if (!onPlatformThisFrame) {
+          platforms.forEach(p => {
+            if (!p.isFalling) p.isPlayerOn = false;
+          });
         }
+      }
+    }
 
-        console.log("Loading images...");
-        loadScores();
-        playerImg = loadImage(PLAYER_IMG_SRC);
-        platformImg = loadImage(PLATFORM_IMG_SRC);
-        enemy1Img = loadImage(ENEMY1_IMG_SRC);
-        enemy2Img = loadImage(ENEMY2_IMG_SRC);
-        backgroundImg = loadImage(BACKGROUND_IMG_SRC);
-        bgMusic.volume = 0.3;
-        gameOverSound.volume = 0.5;
+    // --- Game Loop Function ---
+    function gameLoop() {
+      requestAnimationFrame(gameLoop);
+      switch (gameState) {
+        case 'LOADING':
+          drawLoadingScreen();
+          break;
+        case 'READY':
+          drawReadyScreen();
+          break;
+        case 'RUNNING':
+          updateGameLogic();
+          if (gameState === 'RUNNING') {
+            drawGame();
+          } else if (gameState === 'GAMEOVER') {
+            drawGameOverScreen();
+          }
+          break;
+        case 'GAMEOVER':
+          drawGameOverScreen();
+          break;
+      }
+    }
 
-    </script>
+    // --- Event Listeners ---
+    window.addEventListener('keydown', function(e) {
+      if (gameState === 'READY' || gameState === 'GAMEOVER') {
+        startGame();
+      } else if (gameState === 'RUNNING') {
+        if (e.key === "ArrowRight" || e.keyCode === 39) keys[39] = true;
+        if (e.key === "ArrowLeft" || e.keyCode === 37) keys[37] = true;
+        if ((e.key === " " || e.keyCode === 32) && !keys[32]) {
+          keys[32] = true;
+          if (player.onGround) {
+            player.jumping = true;
+            player.onGround = false;
+            player.velY = baseJump - Math.abs(player.velX * 0.1);
+            if (player.currentPlatform) {
+              player.currentPlatform.isPlayerOn = false;
+              player.currentPlatform.standTimer = 0;
+              player.currentPlatform = null;
+            }
+          }
+        }
+        if (!musicStarted && (keys[39] || keys[37] || keys[32])) {
+          playMusic();
+        }
+      }
+    });
+    window.addEventListener('keyup', function(e) {
+      if (gameState === 'RUNNING') {
+        if (e.key === "ArrowRight" || e.keyCode === 39) keys[39] = false;
+        if (e.key === "ArrowLeft" || e.keyCode === 37) keys[37] = false;
+        if (e.key === " " || e.keyCode === 32) keys[32] = false;
+      }
+    });
+    canvas.addEventListener('click', function(event) {
+      if (gameState === 'READY') {
+        startGame();
+      } else if (gameState === 'GAMEOVER') {
+        const rect = canvas.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+        if (clickX >= playAgainButton.x && clickX <= playAgainButton.x + playAgainButton.width &&
+            clickY >= playAgainButton.y && clickY <= playAgainButton.y + playAgainButton.height) {
+          console.log("Play Again button clicked");
+          initGameData();
+          playMusic();
+        }
+      } else if (gameState === 'RUNNING') {
+        if (!musicStarted) {
+          playMusic();
+        }
+      }
+    });
+    canvas.addEventListener('mousemove', function(event) {
+      if (gameState === 'GAMEOVER') {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+        const hoverNow = (mouseX >= playAgainButton.x && mouseX <= playAgainButton.x + playAgainButton.width &&
+                           mouseY >= playAgainButton.y && mouseY <= playAgainButton.y + playAgainButton.height);
+        if (hoverNow !== isHoveringButton) {
+          isHoveringButton = hoverNow;
+          canvas.classList.toggle('button-hover', isHoveringButton);
+        }
+      } else {
+        if (isHoveringButton) {
+          isHoveringButton = false;
+          canvas.classList.remove('button-hover');
+        }
+      }
+    });
+
+    // --- Image Loading and Game Start ---
+    function imageLoaded() {
+      imagesLoaded++;
+      console.log(`Image loaded (${imagesLoaded}/${totalImages})`);
+      if (imagesLoaded === totalImages) {
+        console.log("All images loaded. Game is READY.");
+        gameState = 'READY';
+      }
+    }
+    function loadImage(src) {
+      const img = new Image();
+      img.onload = imageLoaded;
+      img.onerror = () => {
+        console.error(`Failed to load image: ${src}`);
+        imageLoaded();
+      };
+      img.src = src;
+      return img;
+    }
+
+    console.log("Starting game setup: Loading assets...");
+    loadScores();
+    playerImg = loadImage(PLAYER_IMG_SRC);
+    platformImg = loadImage(PLATFORM_IMG_SRC);
+    enemy1Img = loadImage(ENEMY1_IMG_SRC);
+    enemy2Img = loadImage(ENEMY2_IMG_SRC);
+    backgroundImg = loadImage(BACKGROUND_IMG_SRC);
+    starImg = loadImage(STAR_IMG_SRC);
+    springImg = loadImage(SPRING_IMG_SRC);
+    bgMusic.volume = 0.3;
+    gameOverSound.volume = 0.5;
+    console.log("Starting game loop...");
+    gameLoop();
+  </script>
 </body>
 </html>
