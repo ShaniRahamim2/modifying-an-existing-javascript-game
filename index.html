@@ -36,12 +36,14 @@
         const baseJump = -12;
         const platformFallDelay = 4;
         const platformFallSpeed = 2;
-        const enemyChance = 0.15; // <<< Increased chance slightly for testing
+        const enemyChance = 0.15;
         const enemyWidth = 20;
         const enemyHeight = 20;
         const enemyType2Speed = 1;
-        const platformWidth = 100;
+        const platformWidth = 100; // <<< Standard platform width
         const platformHeight = 20;
+        const widePlatformWidth = 150; // <<< ADDED: Width for wider platforms
+        const widePlatformChance = 0.2; // <<< ADDED: 20% chance for a platform to be wide
         const initialPlatformMaxHeight = 90;
         const platformMinSpacing = 80;
         const platformMaxSpacing = 150;
@@ -122,7 +124,7 @@
                 width: enemyWidth,
                 height: enemyHeight,
                 type: enemyType,
-                x: platform.x + (platform.width / 2) - (enemyWidth / 2),
+                x: platform.x + (platform.width / 2) - (enemyWidth / 2), // Uses platform's actual width
                 y: platform.y - enemyHeight, // Place on top
                 direction: (enemyType === 'type2') ? 1 : 0,
                 speed: (enemyType === 'type2') ? enemyType2Speed : 0
@@ -177,10 +179,14 @@
                      platformY = platforms[i-1].y - spacing; // Base position on the previous platform
                  }
 
+                 // *** CHANGED: Determine platform width randomly ***
+                 let currentPlatformWidth = (Math.random() < widePlatformChance) ? widePlatformWidth : platformWidth;
+
                  let newPlatform = {
-                    x: Math.random() * (canvas.width - platformWidth),
+                    // *** CHANGED: Use determined width for positioning and property ***
+                    x: Math.random() * (canvas.width - currentPlatformWidth),
                     y: platformY,
-                    width: platformWidth,
+                    width: currentPlatformWidth, // <<< Use the determined width
                     height: platformHeight,
                     standTimer: 0,
                     isFalling: false,
@@ -228,6 +234,7 @@
              else { ctx.fillStyle = 'red'; ctx.fillRect(player.x, player.y, player.width, player.height); }
 
              platforms.forEach(platform => {
+                 // Uses platform.width, so automatically handles wide/normal drawing
                  if (platformImg) { ctx.drawImage(platformImg, platform.x, platform.y, platform.width, platform.height); }
                  else { if (platform.isPlayerOn && !platform.isFalling) ctx.fillStyle = '#555'; else if (platform.isFalling) ctx.fillStyle = '#AAA'; else ctx.fillStyle = 'black'; ctx.fillRect(platform.x, platform.y, platform.width, platform.height); }
 
@@ -301,6 +308,7 @@
                      else if (platform.isPlayerOn) { platform.standTimer += deltaTime; if (platform.standTimer >= platformFallDelay) { platform.isFalling = true; platform.isPlayerOn = false; if (player.currentPlatform === platform) player.currentPlatform = null; } }
                      else { platform.standTimer = 0; }
 
+                     // Enemy movement uses platform.width, so it adjusts automatically to wide platforms
                      if (platform.enemy && !platform.isFalling) { let enemy = platform.enemy; enemy.y = platform.y - enemy.height; if (enemy.type === 'type2') { enemy.x += enemy.speed * enemy.direction; if (enemy.x <= platform.x || enemy.x + enemy.width >= platform.x + platform.width) { enemy.direction *= -1; enemy.x = Math.max(platform.x, Math.min(enemy.x, platform.x + platform.width - enemy.width)); } } }
                  });
             }
@@ -321,14 +329,19 @@
                         if (platform.y > canvas.height) {
                             // --- Reset state ---
                             platform.isFalling = false; platform.standTimer = 0; platform.isPlayerOn = false;
-                            platform.enemy = null; // <<< CRITICAL: Remove enemy reference
+                            platform.enemy = null;
+
+                            // *** CHANGED: Determine platform width randomly ***
+                            let currentPlatformWidth = (Math.random() < widePlatformChance) ? widePlatformWidth : platformWidth;
+                            platform.width = currentPlatformWidth; // <<< Set the determined width
 
                             // --- Reposition the platform ALWAYS ---
                             let topPlatformY = Math.min(...platforms.map(p => p.y).filter(y => y > -Infinity && y < canvas.height));
                             if (topPlatformY === Infinity) topPlatformY = player.y - canvas.height / 2;
                             let spacing = Math.random() * (platformMaxSpacing - platformMinSpacing) + platformMinSpacing;
                             platform.y = topPlatformY - spacing;
-                            platform.x = Math.random() * (canvas.width - platform.width);
+                            // *** CHANGED: Use determined width for positioning ***
+                            platform.x = Math.random() * (canvas.width - platform.width); // Uses the new platform.width
 
                             // --- Assign Label ---
                             platformCounter++;
@@ -337,7 +350,7 @@
                             // --- Add Enemy (Optional) AFTER repositioning ---
                             if (Math.random() < enemyChance) {
                                 console.log(`Attempting to add enemy to recycled platform ${platformCounter}`); // DEBUG LOG
-                                platform.enemy = createEnemy(platform); // Create based on NEW position
+                                platform.enemy = createEnemy(platform); // Create based on NEW position and width
                             }
                         }
                     });
@@ -365,12 +378,14 @@
                         // Enemy collision
                         if (platform.enemy && !platform.isFalling) {
                             let enemy = platform.enemy;
+                            // Collision logic remains the same, uses enemy and player properties
                             if (player.x < enemy.x + enemy.width && player.x + player.width > enemy.x &&
                                 player.y < enemy.y + enemy.height && player.y + player.height > enemy.y) {
                                 gameOver("Hit enemy"); return; // Exit immediately
                             }
                         }
                         // Platform collision
+                        // Collision logic remains the same, uses platform.width
                         if (!platform.isFalling && !onPlatformThisFrame) {
                             if (player.velY >= 0 && player.x < platform.x + platform.width && player.x + player.width > platform.x &&
                                 player.y + player.height >= platform.y && player.y + player.height <= platform.y + platform.height + Math.max(1, player.velY)) {
