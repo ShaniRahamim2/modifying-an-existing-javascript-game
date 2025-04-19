@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Platformer Game with Enemies and Powerup</title>
+    <title>Platformer Game with Enemies and Powerups</title>
     <style>
         body, html { margin: 0; padding: 0; overflow: hidden; position: relative; font-family: Arial, sans-serif; }
         #gameCanvas { display: block; margin: auto; }
@@ -43,16 +43,19 @@
         const enemy1Img = new Image(); enemy1Img.src = 'devil1.jpg';
         const enemy2Img = new Image(); enemy2Img.src = 'devil2.png';
         const starImg = new Image(); starImg.src = 'star.jpg';
+        const springImg = new Image(); springImg.src = 'spring.png';
 
         // Settings
         const gravity = 0.5;
         const friction = 0.8;
         const baseJump = -10;
+        const springJump = -20; // higher jump
         const playerWidth = 20;
         const playerHeight = 20;
         const enemyWidth = 15;
         const enemyHeight = 15;
         const starSize = 15;
+        const springSize = 20;
         const initialGroundY = canvas.height - playerHeight;
 
         let hasJumpedOnce, gameOver, player, scrollOffset, score, nextPlatformId, platforms, keys;
@@ -66,88 +69,134 @@
             const width = Math.random() < 0.3 ? 150 : 100;
             const vertical = Math.random() < 0.06;
             const hasStar = Math.random() < 0.1;
+            const hasSpring = Math.random() < 0.04;
             return {
-                id: nextPlatformId++, x: Math.random()*(canvas.width-width), y: y,
-                width: width, height: 10, standStart: null, isFalling: false, fallSpeed: 2,
+                id: nextPlatformId++,
+                x: Math.random()*(canvas.width-width),
+                y: y,
+                width: width,
+                height: 10,
+                standStart: null,
+                isFalling: false,
+                fallSpeed: 2,
                 enemy: Math.random()<0.10?{type:Math.random()<0.5?1:2,offsetX:(width-enemyWidth)/2,direction:1,speed:1}:null,
-                vertical, initialY:y, moveSpeed:vertical?0.5:0, moveDir:1, moveRange:vertical?30:0,
-                star: hasStar
+                vertical,
+                initialY: y,
+                moveSpeed: vertical?0.5:0,
+                moveDir: 1,
+                moveRange: vertical?30:0,
+                star: hasStar,
+                spring: hasSpring
             };
         }
 
         function placePlatform(y) {
-            let p, attempts=0;
+            let p, attempts = 0;
             do {
                 p = createPlatform(y);
                 attempts++;
                 if(attempts>50) break;
-            } while(platforms.some(o=> p.x<o.x+o.width && p.x+p.width>o.x && p.y<o.y+o.height && p.y+p.height>o.y));
+            } while(platforms.some(o =>
+                p.x < o.x+o.width && p.x+p.width>o.x && p.y<o.y+o.height && p.y+p.height>o.y
+            ));
             return p;
         }
 
         function initGame() {
-            hasJumpedOnce = false; gameOver = false; scrollOffset = 0; score = 0; nextPlatformId = 1;
-            invincible = false; invincibleEnd = 0;
-            bgMusic.currentTime = 0; bgMusic.play();
-            player = { x:canvas.width/2-playerWidth/2, y:initialGroundY, width:playerWidth, height:playerHeight, speed:5, velX:0, velY:0, jumping:false };
+            hasJumpedOnce = false;
+            gameOver = false;
+            scrollOffset = 0;
+            score = 0;
+            nextPlatformId = 1;
+            invincible = false;
+            invincibleEnd = 0;
+
+            bgMusic.currentTime = 0;
+            bgMusic.play();
+
+            player = { x: canvas.width/2-playerWidth/2, y: initialGroundY, width: playerWidth, height: playerHeight, speed:5, velX:0, velY:0, jumping:false};
+
             platforms = [];
-            for(let i=0;i<10;i++){ const y = canvas.height-50-100*i; platforms.push(placePlatform(y)); }
+            for(let i=0;i<10;i++){
+                const y = canvas.height-50-100*i;
+                platforms.push(placePlatform(y));
+            }
+
             keys = {};
-            window.onkeydown = e => { keys[e.keyCode] = true; if(e.keyCode===32 && !player.jumping){ player.jumping=true; player.velY=baseJump-Math.abs(player.velX); if(!hasJumpedOnce) hasJumpedOnce=true; }};
-            window.onkeyup = e => keys[e.keyCode] = false;
-            playBtn.style.display='none'; scoreListDiv.style.display='none'; scoreListUl.innerHTML='';
+            window.onkeydown = e => { keys[e.keyCode]=true; if(e.keyCode===32 && !player.jumping){ player.jumping=true; player.velY=baseJump-Math.abs(player.velX); if(!hasJumpedOnce) hasJumpedOnce=true;} };
+            window.onkeyup = e => keys[e.keyCode]=false;
+
+            playBtn.style.display='none';
+            scoreListDiv.style.display='none';
+            scoreListUl.innerHTML='';
+
             requestAnimationFrame(updateGame);
         }
 
-        function showGameOver() {
+        function showGameOver(){
             bgMusic.pause();
             ctx.clearRect(0,0,canvas.width,canvas.height);
             ctx.drawImage(bgImg,0,0,canvas.width,canvas.height);
-            ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(0,0,canvas.width,canvas.height);
-            ctx.fillStyle='white'; ctx.font='48px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
+            ctx.fillStyle='rgba(0,0,0,0.7)';ctx.fillRect(0,0,canvas.width,canvas.height);
+            ctx.fillStyle='white';ctx.font='48px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
             ctx.fillText('GAME OVER',canvas.width/2,canvas.height/2-60);
             playBtn.style.display='block';
-            const top10 = saveScore(score);
-            top10.forEach((s,i)=>{ const li = document.createElement('li'); li.textContent = `${i+1}. ${s}`; scoreListUl.appendChild(li); });
+            const top10=saveScore(score);
+            top10.forEach((s,i)=>{const li=document.createElement('li');li.textContent=`${i+1}. ${s}`;scoreListUl.appendChild(li);});
             scoreListDiv.style.display='block';
         }
 
-        function updateGame() {
+        function updateGame(){
             ctx.clearRect(0,0,canvas.width,canvas.height);
             if(gameOver){ showGameOver(); return; }
-            if(invincible && Date.now()>invincibleEnd) invincible = false;
-            if(keys[39] && player.velX<player.speed) player.velX++;
-            if(keys[37] && player.velX>-player.speed) player.velX--;
+            if(invincible && Date.now()>invincibleEnd) invincible=false;
+            if(keys[39]&&player.velX<player.speed) player.velX++;
+            if(keys[37]&&player.velX>-player.speed) player.velX--;
             player.velX*=friction; player.velY+=gravity; player.x+=player.velX; player.y+=player.velY;
             if(player.y<canvas.height/4){ const dy=Math.abs(player.velY); scrollOffset+=dy; player.y+=dy; platforms.forEach(p=>p.y+=dy);}            
             platforms.forEach((p,i)=>{
-                if(p.moveSpeed){ p.y += p.moveSpeed * p.moveDir; if(p.y > p.initialY + p.moveRange || p.y < p.initialY - p.moveRange) p.moveDir *= -1; }
-                const standing = !p.isFalling && player.x<p.x+p.width && player.x+player.width>p.x && player.y+player.height>p.y && player.y+player.height<p.y+p.height && player.velY>=0;
-                if(standing){ if(!p.standStart) p.standStart=Date.now(); else if(Date.now()-p.standStart>4000) p.isFalling=true; } else p.standStart=null;
+                if(p.moveSpeed){ p.y += p.moveSpeed * p.moveDir; if(p.y>p.initialY+p.moveRange||p.y<p.initialY-p.moveRange) p.moveDir*=-1; }
+                const standing = !p.isFalling&&player.x<p.x+p.width&&player.x+player.width>p.x&&player.y+player.height>p.y&&player.y+player.height<p.y+p.height&&player.velY>=0;
+                if(standing){ if(!p.standStart)p.standStart=Date.now(); else if(Date.now()-p.standStart>4000)p.isFalling=true;} else p.standStart=null;
                 if(p.isFalling) p.y+=p.fallSpeed; if(standing){ player.jumping=false; player.velY=0; player.y=p.y-player.height; }
                 if(p.y>canvas.height) platforms[i]=placePlatform(0);
             });
             platforms.forEach(p=>{
-                if(p.star){ const sx=p.x+p.width/2-starSize/2, sy=p.y-starSize-2; if(player.x<sx+starSize&&player.x+player.width>sx&&player.y<sy+starSize&&player.y+player.height>sy){ invincible=true; invincibleEnd=Date.now()+7000; p.star=false; }}
-                if(p.enemy){ const ex=p.x+p.enemy.offsetX, ey=p.y-enemyHeight; if(!invincible&&player.x<ex+enemyWidth&&player.x+player.width>ex&&player.y<ey+enemyHeight&&player.y+player.height>ey) gameOver=true; }
+                // Spring bounce
+                if(p.spring){ const pxCenter=p.x+p.width/2, pyTop=p.y;
+
+                    if(player.x<pxCenter+springSize/2&&player.x+player.width>pxCenter-springSize/2&&player.y+player.height>=p.y&&player.y+player.height<p.y+5){
+                        player.velY = springJump; player.jumping = true; p.spring=false;
+                    }
+                }
+                // Star collection
+                if(p.star){ const sx=p.x+p.width/2-starSize/2, sy=p.y-starSize-2;
+                    if(player.x<sx+starSize&&player.x+player.width>sx&&player.y<sy+starSize&&player.y+player.height>sy){ invincible=true; invincibleEnd=Date.now()+7000; p.star=false; }
+                }
+                // Enemy collision
+                if(p.enemy){ const ex=p.x+p.enemy.offsetX, ey=p.y-enemyHeight;
+                    if(!invincible&&player.x<ex+enemyWidth&&player.x+player.width>ex&&player.y<ey+enemyHeight&&player.y+player.height>ey) gameOver=true;
+                }
             });
             if(player.x<0) player.x=0; if(player.x>canvas.width-player.width) player.x=canvas.width-player.width;
-            if(player.y>initialGroundY){ if(hasJumpedOnce) gameOver=true; else { player.y=initialGroundY; player.jumping=false; player.velY=0; }}
+            if(player.y>initialGroundY){ if(hasJumpedOnce) gameOver=true; else{ player.y=initialGroundY; player.jumping=false; player.velY=0;} }
             const heightAbove=Math.max(0,initialGroundY-player.y); score=Math.max(score,Math.floor((scrollOffset+heightAbove)/10));
             ctx.drawImage(bgImg,0,0,canvas.width,canvas.height);
-            platforms.forEach(p=>{ ctx.drawImage(platformImg,p.x,p.y,p.width,p.height); if(p.id%10===0){ ctx.fillStyle='white'; ctx.font='12px Arial'; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillText(p.id,p.x+p.width/2,p.y-2);} });
+            platforms.forEach(p=>{ ctx.drawImage(platformImg,p.x,p.y,p.width,p.height); if(p.id%10===0){ ctx.fillStyle='white';ctx.font='12px Arial';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(p.id,p.x+p.width/2,p.y-2);} });
+            // draw springs
+            platforms.forEach(p=>{ if(p.spring){ const px=p.x+p.width/2-springSize/2, py=p.y- springSize; ctx.drawImage(springImg,px,py,springSize,springSize);} });
+            // draw stars
             platforms.forEach(p=>{ if(p.star){ const sx=p.x+p.width/2-starSize/2, sy=p.y-starSize-2; ctx.drawImage(starImg,sx,sy,starSize,starSize);} });
+            // draw enemies
             platforms.forEach(p=>{ if(p.enemy){ const ex=p.x+p.enemy.offsetX, ey=p.y-enemyHeight; const img=p.enemy.type===1?enemy1Img:enemy2Img; ctx.drawImage(img,ex,ey,enemyWidth,enemyHeight);} });
+            // draw player
             ctx.drawImage(playerImg,player.x,player.y,player.width,player.height);
-            // invincible indicator at top-right with timer
-            if(invincible){
-                const remaining = Math.ceil((invincibleEnd - Date.now())/1000);
-                ctx.fillStyle = 'yellow';
-                ctx.font = '16px Arial';
-                ctx.textAlign = 'right';
-                ctx.textBaseline = 'top';
-                ctx.fillText(`Invincible! ${remaining}`, canvas.width - 10, 10);
+            // invincible indicator top-right
+            if(invincible){ const remaining=Math.ceil((invincibleEnd-Date.now())/1000);
+                ctx.fillStyle='yellow'; ctx.font='16px Arial'; ctx.textAlign='right'; ctx.textBaseline='top';
+                ctx.fillText(`Invincible! ${remaining}`,canvas.width-10,10);
             }
+            // score
             ctx.fillStyle='black'; ctx.font='20px Arial'; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText('Score: '+score,10,10);
             requestAnimationFrame(updateGame);
         }
