@@ -6,7 +6,7 @@
     <title>Platformer Game with Enemies</title>
     <style>
         body, html { margin: 0; padding: 0; overflow: hidden; position: relative; font-family: Arial, sans-serif; }
-        #gameCanvas { background-color: #87CEEB; display: block; margin: auto; }
+        #gameCanvas { display: block; margin: auto; }
         #playAgainBtn {
             position: absolute;
             top: 50%; left: 50%;
@@ -18,7 +18,7 @@
         }
         #scoreList {
             position: absolute;
-            top: 55%; left: 50%; /* Adjusted up to fit all 10 entries */
+            top: 55%; left: 50%;
             transform: translateX(-50%);
             color: white;
             text-align: left;
@@ -43,6 +43,10 @@
         const playBtn = document.getElementById('playAgainBtn');
         const scoreListDiv = document.getElementById('scoreList');
         const scoreListUl = scoreListDiv.querySelector('ul');
+
+        // Load background image
+        const bgImg = new Image();
+        bgImg.src = 'blue.jpg';
 
         // Settings
         const gravity = 0.5;
@@ -128,8 +132,10 @@
         }
 
         function showGameOver() {
-            // Background
-            ctx.fillStyle = 'black';
+            // Draw background first
+            ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+            // Overlay semi-transparent black
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             // Game Over text
             ctx.fillStyle = 'white';
@@ -215,12 +221,13 @@
                 }
             }
 
-            // Score
+            // Update score
             const heightAboveGround = Math.max(0, initialGroundY - player.y);
             score = Math.max(score, Math.floor((scrollOffset + heightAboveGround) / 10));
 
-            // Draw scene
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Draw background
+            ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+            // Draw platforms & enemies
             platforms.forEach(p => {
                 ctx.fillStyle = 'black'; ctx.fillRect(p.x, p.y, p.width, p.height);
                 if (p.id % 10 === 0) {
@@ -234,7 +241,9 @@
                     ctx.fillRect(ex, ey, enemyWidth, enemyHeight);
                 }
             });
+            // Draw player
             ctx.fillStyle = 'red'; ctx.fillRect(player.x, player.y, player.width, player.height);
+            // Draw score
             ctx.fillStyle = 'black'; ctx.font = '20px Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
             ctx.fillText('Score: ' + score, 10, 10);
 
