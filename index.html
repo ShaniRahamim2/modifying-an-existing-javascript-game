@@ -8,22 +8,12 @@
         body, html { margin: 0; padding: 0; overflow: hidden; position: relative; font-family: Arial, sans-serif; }
         #gameCanvas { display: block; margin: auto; }
         #playAgainBtn {
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            padding: 10px 20px;
-            font-size: 18px;
-            display: none;
-            z-index: 10;
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            padding: 10px 20px; font-size: 18px; display: none; z-index: 10;
         }
         #scoreList {
-            position: absolute;
-            top: 55%; left: 50%;
-            transform: translateX(-50%);
-            color: white;
-            text-align: left;
-            display: none;
-            z-index: 10;
+            position: absolute; top: 55%; left: 50%; transform: translateX(-50%);
+            color: white; text-align: left; display: none; z-index: 10;
         }
         #scoreList h2 { margin: 0 0 10px; font-size: 24px; text-align: center; }
         #scoreList ul { list-style: none; padding: 0; margin: 0; }
@@ -37,7 +27,6 @@
         <h2>Top 10 Scores</h2>
         <ul></ul>
     </div>
-    <!-- Background music -->
     <audio id="bgMusic" src="scene2b-birds-chirpingpro-shgovmbf.wav" loop></audio>
     <script>
         const canvas = document.getElementById('gameCanvas');
@@ -67,7 +56,6 @@
         // Game state
         let hasJumpedOnce, gameOver, player, scrollOffset, score, nextPlatformId, platforms, keys;
 
-        // Persistent top scores
         function getTopScores() {
             const data = localStorage.getItem('topScores');
             return data ? JSON.parse(data) : [];
@@ -82,19 +70,17 @@
         }
 
         function createPlatform(y) {
-            // 30% chance platform is wider (150px), otherwise 100px
             const width = Math.random() < 0.3 ? 150 : 100;
-            const x = Math.random() * (canvas.width - width);
             return {
                 id: nextPlatformId++,
-                x: x,
+                x: Math.random() * (canvas.width - width),
                 y: y,
                 width: width,
                 height: 10,
                 standStart: null,
                 isFalling: false,
                 fallSpeed: 2,
-                enemy: Math.random() < 0.05
+                enemy: Math.random() < 0.15
                     ? { type: Math.random() < 0.5 ? 1 : 2, offsetX: (width - enemyWidth) / 2, direction: 1, speed: 1 }
                     : null
             };
@@ -107,7 +93,6 @@
             score = 0;
             nextPlatformId = 1;
 
-            // Start background music
             bgMusic.currentTime = 0;
             bgMusic.play();
 
@@ -123,9 +108,7 @@
             };
 
             platforms = [];
-            for (let i = 0; i < 10; i++) {
-                platforms.push(createPlatform(canvas.height - 50 - 100 * i));
-            }
+            for (let i = 0; i < 10; i++) platforms.push(createPlatform(canvas.height - 50 - 100 * i));
 
             keys = [];
             window.onkeydown = e => {
@@ -147,6 +130,7 @@
 
         function showGameOver() {
             bgMusic.pause();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
             ctx.fillStyle = 'rgba(0,0,0,0.7)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -155,6 +139,7 @@
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 60);
+
             playBtn.style.display = 'block';
             const top10 = saveScore(score);
             top10.forEach((s, idx) => {
@@ -166,28 +151,85 @@
         }
 
         function updateGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             if (gameOver) { showGameOver(); return; }
+
+            // Movement & physics
             if (keys[39] && player.velX < player.speed) player.velX++;
             if (keys[37] && player.velX > -player.speed) player.velX--;
             player.velX *= friction;
             player.velY += gravity;
             player.x += player.velX;
             player.y += player.velY;
+
+            // Scroll
             if (player.y < canvas.height / 4) {
                 const dy = Math.abs(player.velY);
                 scrollOffset += dy;
                 player.y += dy;
                 platforms.forEach(p => p.y += dy);
             }
-            platforms.forEach((p, idx) => {
-                const standing = !p.isFalling && player.x < p.x + p.width && player.x + player.width > p.x && player.y + player.height > p.y && player.y + player.height < p.y + p.height && player.velY >= 0;
+
+            // Collision detection
+            platforms.forEach(p => {
+                const standing = !p.isFalling &&
+                    player.x < p.x + p.width && player.x + player.width > p.x &&
+                    player.y + player.height > p.y && player.y + player.height < p.y + p.height &&
+                    player.velY >= 0;
                 if (standing) {
                     if (!p.standStart) p.standStart = Date.now();
                     else if (Date.now() - p.standStart > 4000) p.isFalling = true;
-                } else p.standStart = null;
+                } else {
+                    p.standStart = null;
+                }
                 if (p.isFalling) p.y += p.fallSpeed;
-                if (standing) { player.jumping = false; player.velY = 0; player.y = p.y - player.height; }
+                if (standing) {
+                    player.jumping = false;
+                    player.velY = 0;
+                    player.y = p.y - player.height;
+                }
                 if (p.enemy) {
+                    const ex = p.x + p.enemy.offsetX;
+                    const ey = p.y - enemyHeight;
+                    if (player.x < ex + enemyWidth && player.x + player.width > ex &&
+                        player.y < ey + enemyHeight && player.y + player.height > ey) {
+                        gameOver = true;
+                    }
+                }
+                if (p.y > canvas.height) platforms[platforms.indexOf(p)] = createPlatform(0);
+            });
+
+            // Bounds
+            if (player.x < 0) player.x = 0;
+            if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
+            if (player.y > initialGroundY) {
+                if (hasJumpedOnce) gameOver = true;
+                else {
+                    player.y = initialGroundY;
+                    player.jumping = false;
+                    player.velY = 0;
+                }
+            }
+
+            // Update score
+            const heightAbove = Math.max(0, initialGroundY - player.y);
+            score = Math.max(score, Math.floor((scrollOffset + heightAbove) / 10));
+
+            // Drawing order: background, platforms, enemies, player, score
+            ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+            platforms.forEach(p => {
+                ctx.drawImage(platformImg, p.x, p.y, p.width, p.height);
+                if (p.id % 10 === 0) {
+                    ctx.fillStyle = 'white';
+                    ctx.font = '12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    ctx.fillText(p.id, p.x + p.width / 2, p.y - 2);
+                }
+            });
+            platforms.forEach(p => {
+                if (p.enemy) {
+                    // update enemy movement
                     if (p.enemy.type === 2) {
                         p.enemy.offsetX += p.enemy.speed * p.enemy.direction;
                         if (p.enemy.offsetX <= 0 || p.enemy.offsetX >= p.width - enemyWidth) p.enemy.direction *= -1;
@@ -196,29 +238,15 @@
                     const ey = p.y - enemyHeight;
                     const img = p.enemy.type === 1 ? enemy1Img : enemy2Img;
                     ctx.drawImage(img, ex, ey, enemyWidth, enemyHeight);
-                    if (player.x < ex + enemyWidth && player.x + player.width > ex && player.y < ey + enemyHeight && player.y + player.height > ey) gameOver = true;
-                }
-                if (p.y > canvas.height) platforms[idx] = createPlatform(0);
-            });
-            if (player.x < 0) player.x = 0;
-            if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
-            if (player.y > initialGroundY) {
-                if (hasJumpedOnce) gameOver = true;
-                else { player.y = initialGroundY; player.jumping = false; player.velY = 0; }
-            }
-            const heightAbove = Math.max(0, initialGroundY - player.y);
-            score = Math.max(score, Math.floor((scrollOffset + heightAbove) / 10));
-            ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
-            platforms.forEach(p => {
-                ctx.drawImage(platformImg, p.x, p.y, p.width, p.height);
-                if (p.id % 10 === 0) {
-                    ctx.fillStyle = 'white'; ctx.font = '12px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-                    ctx.fillText(p.id, p.x + p.width / 2, p.y - 2);
                 }
             });
             ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
-            ctx.fillStyle = 'black'; ctx.font = '20px Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+            ctx.fillStyle = 'black';
+            ctx.font = '20px Arial';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
             ctx.fillText('Score: ' + score, 10, 10);
+
             requestAnimationFrame(updateGame);
         }
 
