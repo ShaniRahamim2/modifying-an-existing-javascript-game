@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Platformer Game with Falling Platforms</title>
+    <title>Platformer Game with Numbered & Falling Platforms</title>
     <style>
         body, html { margin: 0; padding: 0; overflow: hidden; }
         #gameCanvas { background-color: #87CEEB; display: block; margin: auto; }
@@ -35,14 +35,18 @@
             jumping: false
         };
 
-        // Score tracking
+        // Score & scroll tracking
         let scrollOffset = 0;
         let score = 0;
+
+        // Platform numbering
+        let nextPlatformId = 1;
 
         // Platforms
         let platforms = [];
         for (let i = 0; i < 10; i++) {
             platforms.push({
+                id: nextPlatformId++,
                 x: Math.random() * (canvas.width - 100),
                 y: canvas.height - (100 * i) - 50,
                 width: 100,
@@ -57,7 +61,7 @@
         let keys = [];
         window.addEventListener('keydown', e => {
             keys[e.keyCode] = true;
-            if (e.keyCode === 32 && !player.jumping) { 
+            if (e.keyCode === 32 && !player.jumping) {
                 player.jumping = true;
                 player.velY = baseJump - Math.abs(player.velX);
             }
@@ -77,7 +81,7 @@
             player.x += player.velX;
             player.y += player.velY;
 
-            // Screen scroll & accumulate offset
+            // Scroll & accumulate
             if (player.y < canvas.height / 4) {
                 const dy = Math.abs(player.velY);
                 scrollOffset += dy;
@@ -89,7 +93,6 @@
 
             // Platform logic: falling after standing 4s
             platforms.forEach(p => {
-                // Check if player is standing on this platform
                 const isStanding =
                     !p.isFalling &&
                     player.x < p.x + p.width &&
@@ -99,39 +102,36 @@
                     player.velY >= 0;
 
                 if (isStanding) {
-                    // start or continue timer
                     if (p.standStart === null) {
                         p.standStart = Date.now();
                     } else if (Date.now() - p.standStart > 4000) {
                         p.isFalling = true;
                     }
                 } else {
-                    // reset if player leaves
                     p.standStart = null;
                 }
 
-                // if falling, move it down
                 if (p.isFalling) {
                     p.y += p.fallSpeed;
                 }
 
-                // collision only if not falling
                 if (isStanding) {
                     player.jumping = false;
                     player.velY = 0;
                     player.y = p.y - player.height;
                 }
 
-                // respawn off-screen platforms
+                // Respawn once off-screen
                 if (p.y > canvas.height) {
                     p.y = 0;
                     p.x = Math.random() * (canvas.width - p.width);
                     p.isFalling = false;
                     p.standStart = null;
+                    p.id = nextPlatformId++;
                 }
             });
 
-            // Boundaries
+            // Canvas bounds
             if (player.x < 0) player.x = 0;
             if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
             if (player.y > initialGroundY) {
@@ -145,13 +145,20 @@
             const totalClimb = scrollOffset + heightAboveGround;
             score = Math.max(score, Math.floor(totalClimb / 10));
 
-            // Draw
+            // Draw everything
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Draw platforms
-            ctx.fillStyle = 'black';
+            // Draw platforms and labels
             platforms.forEach(p => {
+                ctx.fillStyle = 'black';
                 ctx.fillRect(p.x, p.y, p.width, p.height);
+                if (p.id % 10 === 0) {
+                    ctx.fillStyle = 'white';
+                    ctx.font = '12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    ctx.fillText(p.id, p.x + p.width / 2, p.y - 2);
+                }
             });
 
             // Draw player
@@ -161,7 +168,9 @@
             // Draw score
             ctx.fillStyle = 'black';
             ctx.font = '20px Arial';
-            ctx.fillText('Score: ' + score, 10, 30);
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.fillText('Score: ' + score, 10, 10);
 
             requestAnimationFrame(updateGame);
         }
