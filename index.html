@@ -82,10 +82,12 @@
         }
 
         function createPlatform(y) {
-            const width = 100;
+            // 30% chance platform is wider (150px), otherwise 100px
+            const width = Math.random() < 0.3 ? 150 : 100;
+            const x = Math.random() * (canvas.width - width);
             return {
                 id: nextPlatformId++,
-                x: Math.random() * (canvas.width - width),
+                x: x,
                 y: y,
                 width: width,
                 height: 10,
@@ -121,7 +123,9 @@
             };
 
             platforms = [];
-            for (let i = 0; i < 10; i++) platforms.push(createPlatform(canvas.height - 50 - 100 * i));
+            for (let i = 0; i < 10; i++) {
+                platforms.push(createPlatform(canvas.height - 50 - 100 * i));
+            }
 
             keys = [];
             window.onkeydown = e => {
@@ -143,19 +147,15 @@
 
         function showGameOver() {
             bgMusic.pause();
-
             ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
             ctx.fillStyle = 'rgba(0,0,0,0.7)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
             ctx.fillStyle = 'white';
             ctx.font = '48px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 60);
-
             playBtn.style.display = 'block';
-
             const top10 = saveScore(score);
             top10.forEach((s, idx) => {
                 const li = document.createElement('li');
@@ -167,35 +167,26 @@
 
         function updateGame() {
             if (gameOver) { showGameOver(); return; }
-
             if (keys[39] && player.velX < player.speed) player.velX++;
             if (keys[37] && player.velX > -player.speed) player.velX--;
             player.velX *= friction;
             player.velY += gravity;
             player.x += player.velX;
             player.y += player.velY;
-
             if (player.y < canvas.height / 4) {
                 const dy = Math.abs(player.velY);
                 scrollOffset += dy;
                 player.y += dy;
                 platforms.forEach(p => p.y += dy);
             }
-
             platforms.forEach((p, idx) => {
-                const standing = !p.isFalling &&
-                                 player.x < p.x + p.width &&
-                                 player.x + player.width > p.x &&
-                                 player.y + player.height > p.y &&
-                                 player.y + player.height < p.y + p.height &&
-                                 player.velY >= 0;
+                const standing = !p.isFalling && player.x < p.x + p.width && player.x + player.width > p.x && player.y + player.height > p.y && player.y + player.height < p.y + p.height && player.velY >= 0;
                 if (standing) {
                     if (!p.standStart) p.standStart = Date.now();
                     else if (Date.now() - p.standStart > 4000) p.isFalling = true;
                 } else p.standStart = null;
                 if (p.isFalling) p.y += p.fallSpeed;
                 if (standing) { player.jumping = false; player.velY = 0; player.y = p.y - player.height; }
-
                 if (p.enemy) {
                     if (p.enemy.type === 2) {
                         p.enemy.offsetX += p.enemy.speed * p.enemy.direction;
@@ -207,20 +198,16 @@
                     ctx.drawImage(img, ex, ey, enemyWidth, enemyHeight);
                     if (player.x < ex + enemyWidth && player.x + player.width > ex && player.y < ey + enemyHeight && player.y + player.height > ey) gameOver = true;
                 }
-
                 if (p.y > canvas.height) platforms[idx] = createPlatform(0);
             });
-
             if (player.x < 0) player.x = 0;
             if (player.x > canvas.width - player.width) player.x = canvas.width - player.width;
             if (player.y > initialGroundY) {
                 if (hasJumpedOnce) gameOver = true;
                 else { player.y = initialGroundY; player.jumping = false; player.velY = 0; }
             }
-
             const heightAbove = Math.max(0, initialGroundY - player.y);
             score = Math.max(score, Math.floor((scrollOffset + heightAbove) / 10));
-
             ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
             platforms.forEach(p => {
                 ctx.drawImage(platformImg, p.x, p.y, p.width, p.height);
@@ -228,15 +215,10 @@
                     ctx.fillStyle = 'white'; ctx.font = '12px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
                     ctx.fillText(p.id, p.x + p.width / 2, p.y - 2);
                 }
-                if (p.enemy) {
-                    // enemy image drawn above
-                }
             });
-
             ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
             ctx.fillStyle = 'black'; ctx.font = '20px Arial'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
             ctx.fillText('Score: ' + score, 10, 10);
-
             requestAnimationFrame(updateGame);
         }
 
