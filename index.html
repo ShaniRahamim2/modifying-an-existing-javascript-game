@@ -37,12 +37,15 @@
         <h2>Top 10 Scores</h2>
         <ul></ul>
     </div>
+    <!-- Background music -->
+    <audio id="bgMusic" src="scene2b-birds-chirpingpro-shgovmbf.wav" loop></audio>
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const playBtn = document.getElementById('playAgainBtn');
         const scoreListDiv = document.getElementById('scoreList');
         const scoreListUl = scoreListDiv.querySelector('ul');
+        const bgMusic = document.getElementById('bgMusic');
 
         // Load images
         const bgImg = new Image(); bgImg.src = 'blue.jpg';
@@ -102,6 +105,10 @@
             score = 0;
             nextPlatformId = 1;
 
+            // Start background music
+            bgMusic.currentTime = 0;
+            bgMusic.play();
+
             player = {
                 x: canvas.width / 2 - playerWidth / 2,
                 y: initialGroundY,
@@ -135,6 +142,8 @@
         }
 
         function showGameOver() {
+            bgMusic.pause();
+
             ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
             ctx.fillStyle = 'rgba(0,0,0,0.7)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -174,13 +183,17 @@
             }
 
             platforms.forEach((p, idx) => {
-                const standing = !p.isFalling && player.x < p.x + p.width && player.x + player.width > p.x && player.y + player.height > p.y && player.y + player.height < p.y + p.height && player.velY >= 0;
+                const standing = !p.isFalling &&
+                                 player.x < p.x + p.width &&
+                                 player.x + player.width > p.x &&
+                                 player.y + player.height > p.y &&
+                                 player.y + player.height < p.y + p.height &&
+                                 player.velY >= 0;
                 if (standing) {
                     if (!p.standStart) p.standStart = Date.now();
                     else if (Date.now() - p.standStart > 4000) p.isFalling = true;
                 } else p.standStart = null;
                 if (p.isFalling) p.y += p.fallSpeed;
-
                 if (standing) { player.jumping = false; player.velY = 0; player.y = p.y - player.height; }
 
                 if (p.enemy) {
@@ -190,6 +203,8 @@
                     }
                     const ex = p.x + p.enemy.offsetX;
                     const ey = p.y - enemyHeight;
+                    const img = p.enemy.type === 1 ? enemy1Img : enemy2Img;
+                    ctx.drawImage(img, ex, ey, enemyWidth, enemyHeight);
                     if (player.x < ex + enemyWidth && player.x + player.width > ex && player.y < ey + enemyHeight && player.y + player.height > ey) gameOver = true;
                 }
 
@@ -210,17 +225,11 @@
             platforms.forEach(p => {
                 ctx.drawImage(platformImg, p.x, p.y, p.width, p.height);
                 if (p.id % 10 === 0) {
-                    ctx.fillStyle = 'white';
-                    ctx.font = '12px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'bottom';
+                    ctx.fillStyle = 'white'; ctx.font = '12px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
                     ctx.fillText(p.id, p.x + p.width / 2, p.y - 2);
                 }
                 if (p.enemy) {
-                    const ex = p.x + p.enemy.offsetX;
-                    const ey = p.y - enemyHeight;
-                    const img = p.enemy.type === 1 ? enemy1Img : enemy2Img;
-                    ctx.drawImage(img, ex, ey, enemyWidth, enemyHeight);
+                    // enemy image drawn above
                 }
             });
 
