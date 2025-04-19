@@ -1,0 +1,7 @@
+# ignore all images
+*.jpg
+*.jpeg
+*.png
+
+# ignore all wav audio
+*.wav
