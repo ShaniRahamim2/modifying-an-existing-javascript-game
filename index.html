@@ -96,9 +96,13 @@
                 p = createPlatform(y);
                 attempts++;
                 if(attempts>50) break;
-            } while(platforms.some(o =>
-                p.x < o.x+o.width && p.x+p.width>o.x && p.y<o.y+o.height && p.y+p.height>o.y
-            ));
+            } while (platforms.some(o =>
+                // check rectangle overlap with 5px buffer
+                p.x < o.x + o.width + 5 &&
+                p.x + p.width + 5 > o.x &&
+                p.y < o.y + o.height + 5 &&
+                p.y + p.height + 5 > o.y
+            ));;
             return p;
         }
 
